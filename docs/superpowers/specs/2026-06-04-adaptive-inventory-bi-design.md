@@ -43,10 +43,25 @@ The system routes users based on that answer:
 - Organized users import data and begin immediately.
 - ERP users upload exports first; direct integrations can come later.
 - Partly organized users import what exists and capture missing stock over time.
-- Unorganized users begin with photo-first and product-first capture.
+- Unorganized users begin with photo-first draft inventory, even when they have no sheet, file, SKU list, or reliable quantities.
 - New brands create products and stock records as activity happens.
 
 Imported stock is usable immediately, but starts as `imported_unverified`. Imported inventory should not become fully trusted automatically.
+
+### No File / No Sheet Path
+
+If the user has no Excel, CSV, ERP export, or complete stock file, the product should not ask them to create one outside the system. The app itself becomes the way inventory starts getting captured.
+
+The no-file path works like this:
+
+1. User selects `mostly_unorganized`, `starting_from_scratch`, or `no_inventory_file`.
+2. App opens quick photo capture.
+3. Each photo immediately creates a draft inventory item.
+4. User may optionally add a rough quantity, product name, category, color, size, SKU, price, or note.
+5. The draft is saved even if all fields except the photo are unknown.
+6. Missing details become Action Queue tasks later.
+
+Photo-first capture is not AI recognition in the MVP. The system does not need to identify the product, count quantity, infer size, or find SKU from the image. The photo is the anchor record that lets a messy business start now and confirm details later.
 
 ## Core Modules
 
@@ -68,12 +83,16 @@ Allows users to add stock quickly from imperfect information:
 - Optional coarse inventory status
 - Notes
 
+Photo capture must support a one-tap draft flow. A user can take a photo and save a draft inventory item without entering quantity, price, size, SKU, or category. The product should ask at most one or two lightweight follow-up questions during capture, such as rough quantity or product name, then let the user continue.
+
 The capture priority is:
 
 1. Photo-first
 2. Product-first
 3. Coarse status/location later
 4. Carton or detailed physical organization last
+
+Photo drafts should appear in the system as real but incomplete inventory records, not as failed imports or invalid products.
 
 ### Inventory Visibility
 
@@ -146,6 +165,10 @@ Turns messy data into small owner-friendly tasks:
 - Add category or size
 - Add photos
 - Check unverified stock value
+- Complete photo draft items
+- Add names to photo-only products
+- Add rough or exact quantities to photo-captured stock
+- Add price to photo-captured stock so trapped value can be estimated
 
 The dashboard should make the next useful action obvious.
 
@@ -172,6 +195,15 @@ Mobile dashboard priority:
 3. Business Confidence and Inventory Health
 4. Business Feed
 5. Sales Intelligence
+
+For users who start without a file, the dashboard should still provide payoff immediately. It should show counts and value-estimation gaps such as:
+
+- Photo-captured items needing names
+- Photo-captured stock needing quantities
+- Products needing prices before trapped stock value can be estimated
+- High-value or high-quantity drafts that deserve owner attention first
+
+The owner-facing language should frame this as inventory risk and recovery opportunity, not as data-entry failure.
 
 ## Data Model
 
@@ -200,6 +232,7 @@ Fields:
 - Product
 - Quantity
 - Quantity type: exact or approximate
+- Quantity known: yes or no
 - Inventory Status
 - Confidence State
 - Source
@@ -227,6 +260,7 @@ The MVP should not depend on racks, shelves, bins, or detailed location mapping.
 Represents the reliability of a stock record:
 
 - photo_only
+- draft_photo
 - imported_unverified
 - manually_entered
 - count_verified
@@ -234,6 +268,8 @@ Represents the reliability of a stock record:
 - conflict_detected
 
 These states are useful internally, but the owner-facing view should roll them up into Business Confidence.
+
+`draft_photo` represents a stock or product record created from a photo where core details are still unknown. It is a valid starting state, especially for users with no inventory file.
 
 ### Source
 
@@ -253,6 +289,7 @@ Represents every meaningful stock action:
 
 - Import
 - Photo capture
+- Photo draft creation
 - Manual entry
 - Count
 - Sale
@@ -340,6 +377,8 @@ If imported stock says 100 units and a manual count says 82, the system preserve
 
 Missing price, quantity, size, category, or photo should be allowed. The issue appears in Inventory Health and Action Queue.
 
+Photo draft items may be missing all structured fields except the photo and source. The system should preserve them, generate cleanup tasks, and allow the user to enrich them later instead of blocking capture.
+
 ### Approximate Counts
 
 Approximate quantities are allowed and useful, but they lower confidence until verified.
@@ -365,6 +404,7 @@ Rs. 3.2L stock has not moved in 120 days. Confidence: medium, based on imported 
 - ERP export upload
 - Manual product and stock entry
 - Photo-first capture
+- Photo draft inventory for users with no Excel, CSV, ERP export, SKU list, or complete stock file
 - Inventory Status, Confidence State, and Source
 - Business Confidence
 - Inventory Health
@@ -407,6 +447,9 @@ The first implementation should be tested against these scenarios:
 
 - Organized brand imports inventory and all imported stock starts as imported_unverified.
 - Partly organized brand imports data and captures missing products manually.
+- No-file brand takes a product photo and a draft inventory item is created even when quantity, SKU, size, price, and category are unknown.
+- Photo draft items appear in Action Queue with clear next actions such as add name, add quantity, add price, or add category.
+- Photo draft items appear on the dashboard as inventory risk or recovery opportunity, not as invalid records.
 - Messy brand adds product photos without quantity or price, and those gaps appear in Inventory Health.
 - User verifies quantities, and Business Confidence increases.
 - Sales are recorded against unverified inventory without breaking the system.
