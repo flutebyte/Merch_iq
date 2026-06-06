@@ -1,0 +1,29 @@
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+
+async function request(method, path, data, token) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: method.toUpperCase(),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: data !== undefined ? JSON.stringify(data) : undefined,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    const err = new Error(body.error || 'Request failed');
+    err.status = res.status;
+    err.data = body;
+    throw err;
+  }
+
+  return res.json();
+}
+
+export const api = {
+  get:    (path, token)         => request('GET',    path, undefined, token),
+  post:   (path, data, token)   => request('POST',   path, data,      token),
+  patch:  (path, data, token)   => request('PATCH',  path, data,      token),
+  delete: (path, token)         => request('DELETE', path, undefined, token),
+};
