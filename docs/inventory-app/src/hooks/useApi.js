@@ -20,6 +20,13 @@ export function useFetch(path) {
 
   useEffect(() => { run(); }, [run]);
 
+  // Listen for manual mutation events and refetch when they occur
+  useEffect(() => {
+    const handler = () => { if (path) run(); };
+    window.addEventListener('inv:mutation', handler);
+    return () => window.removeEventListener('inv:mutation', handler);
+  }, [path, run]);
+
   return { data, loading, error, refetch: run };
 }
 
@@ -44,8 +51,9 @@ export function useApiRequest() {
   return {
     loading,
     error,
-    get:   (path)       => request('get',   path),
-    post:  (path, data) => request('post',  path, data),
-    patch: (path, data) => request('patch', path, data),
+    get:   (path)       => request('get',    path),
+    post:  (path, data) => request('post',   path, data),
+    patch: (path, data) => request('patch',  path, data),
+    del:   (path)       => request('delete', path),
   };
 }

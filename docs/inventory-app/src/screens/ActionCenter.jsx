@@ -1,183 +1,254 @@
 import React, { useState } from 'react';
-import { ClipboardList, Check, DollarSign, Package, AlertTriangle, TrendingDown, Users, ChevronRight } from 'lucide-react';
+import {
+  ClipboardList, Check, DollarSign, Package, AlertTriangle, TrendingDown,
+  Camera, Tag, Hash, ChevronRight, Loader, RefreshCw
+} from 'lucide-react';
+import { useFetch, useApiRequest } from '../hooks/useApi';
 
-const actionIcons = {
-  price: DollarSign,
-  quantity: Package,
-  deadstock: TrendingDown,
-  detail: AlertTriangle,
-  verify: Check
+const TYPE_META = {
+  resolve_conflict:  { icon: AlertTriangle, color: 'var(--danger)',  label: 'Conflict' },
+  add_price:         { icon: DollarSign,    color: 'var(--success)', label: 'Add Price' },
+  verify_quantity:   { icon: Hash,          color: 'var(--warning)', label: 'Verify Qty' },
+  add_category:      { icon: Tag,           color: 'var(--info)',    label: 'Category' },
+  add_photo:         { icon: Camera,        color: 'var(--info)',    label: 'Add Photo' },
+  add_name:          { icon: Package,       color: 'var(--text-secondary)', label: 'Add Name' },
+  add_quantity:      { icon: Hash,          color: 'var(--warning)', label: 'Add Qty' },
+  review_dead_stock: { icon: TrendingDown,  color: 'var(--warning)', label: 'Dead Stock' },
 };
 
-const actionColors = {
-  price: 'var(--success)',
-  quantity: 'var(--warning)',
-  deadstock: 'var(--danger)',
-  detail: 'var(--info)',
-  verify: 'var(--accent)'
+const PRIORITY_LABEL = { 1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low', 5: 'Lowest' };
+const PRIORITY_COLOR = {
+  1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--info)',
+  4: 'var(--text-muted)', 5: 'var(--text-muted)',
 };
 
-const fmt = (n) => n == null ? '—' : `₹${n.toLocaleString('en-IN')}`;
+export default function ActionCenter({ onNavigate, onSelectProduct }) {
+  const { data, loading, error, refetch } = useFetch('/action-queue');
+  const { post, patch } = useApiRequest();
+  const [dismissed, setDismissed] = useState([]);
+  const [expanded, setExpanded]   = useState(null);
+  const [snoozing, setSnoozing]   = useState(null);
+  const [resolving, setResolving] = useState(null);
 
-export default function ActionCenter({ onNavigate }) {
-  const [done, setDone] = useState([]);
-  const [expanded, setExpanded] = useState(null);
+  const allTasks = (data?.tasks || []).filter(t => !dismissed.includes(t.id));
+  const p1 = allTasks.filter(t => t.priority === 1);
+  const p2 = allTasks.filter(t => t.priority === 2);
+  const other = allTasks.filter(t => t.priority > 2);
 
-  // Actions will be populated from the API in Phase 2 (confidence score jobs + action queue)
-  const actions   = [];
-  const allProducts = [];
+  const handleSnooze = async (taskId) => {
+    setSnoozing(taskId);
+    try {
+      await post(`/action-queue/${taskId}/snooze`);
+      setDismissed(d => [...d, taskId]);
+      if (expanded === taskId) setExpanded(null);
+    } finally {
+      setSnoozing(null);
+    }
+  };
 
-  const pending   = actions.filter(a => !done.includes(a.id));
-  const completed = actions.filter(a => done.includes(a.id));
+  const handleResolveConflict = async (task) => {
+    setResolving(task.id);
+    try {
+      await patch(`/stock-lots/${task.stockLotId}`, { trigger: 'conflict_resolved' });
+      setDismissed(d => [...d, task.id]);
+      if (expanded === task.id) setExpanded(null);
+      window.dispatchEvent(new CustomEvent('inv:mutation'));
+      refetch();
+    } finally {
+      setResolving(null);
+    }
+  };
+
+  const TaskCard = ({ task, i }) => {
+    const meta = TYPE_META[task.type] || { icon: ClipboardList, color: 'var(--text-secondary)', label: task.type };
+    const Icon = meta.icon;
+    const isOpen = expanded === task.id;
+
+    const navigateToProduct = () => {
+      if (onSelectProduct && task.productId) onSelectProduct(task.productId);
+      else onNavigate('inventory');
+    };
+
+    return (
+      <div
+        style={{
+          background: 'var(--surface)', border: `1px solid ${isOpen ? meta.color + '28' : 'var(--border)'}`,
+          borderRadius: 'var(--radius-lg)', overflow: 'hidden', transition: 'border-color 0.15s ease',
+          animation: `fadeIn 0.2s ease ${Math.min(i, 6) * 0.04}s both`,
+          boxShadow: 'var(--shadow-sm)',
+        }}
+      >
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer' }}
+          onClick={() => setExpanded(isOpen ? null : task.id)}
+        >
+          <div style={{
+            width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+            background: `${meta.color}12`, border: `1px solid ${meta.color}28`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Icon size={15} color={meta.color} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{task.label}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 8 }}>
+              <span style={{ color: task.type === 'resolve_conflict' ? 'var(--danger)' : 'var(--text-muted)' }}>{meta.label}</span>
+              {task.confidenceDelta && task.confidenceDelta !== '0%' && (
+                <span style={{ color: 'var(--success)' }}>↑ {task.confidenceDelta} confidence</span>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 100,
+              color: PRIORITY_COLOR[task.priority],
+              background: `${PRIORITY_COLOR[task.priority]}12`,
+              border: `1px solid ${PRIORITY_COLOR[task.priority]}28`,
+            }}>
+              {PRIORITY_LABEL[task.priority]}
+            </span>
+            <ChevronRight
+              size={14} color="var(--text-muted)"
+              style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s ease' }}
+            />
+          </div>
+        </div>
+
+        {isOpen && (
+          <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: 'var(--surface2)', animation: 'fadeIn 0.15s ease' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Product:</strong> {task.productName}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {task.action === 'resolve_conflict' && (
+                <>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={() => handleResolveConflict(task)}
+                    disabled={resolving === task.id}
+                  >
+                    {resolving === task.id
+                      ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} />
+                      : <><AlertTriangle size={12} /> Resolve conflict</>}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={navigateToProduct}>
+                    <Package size={12} /> View product
+                  </button>
+                </>
+              )}
+              {(task.action === 'edit_product' || task.action === 'view_product' ||
+                task.action === 'count_entry' || task.action === 'edit_draft') && (
+                <button className="btn btn-primary btn-sm" onClick={navigateToProduct}>
+                  <Package size={12} /> Go to product
+                </button>
+              )}
+              {task.action === 'photo_capture' && (
+                <button className="btn btn-primary btn-sm" onClick={() => onNavigate('photo')}>
+                  <Camera size={12} /> Add photo
+                </button>
+              )}
+              {task.action !== 'resolve_conflict' && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => handleSnooze(task.id)}
+                  disabled={snoozing === task.id}
+                >
+                  {snoozing === task.id
+                    ? <Loader size={12} style={{ animation: 'spin 0.8s linear infinite' }} />
+                    : 'Snooze 7 days'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div style={{ padding: '28px 24px', maxWidth: 800, margin: '0 auto', animation: 'fadeIn 0.3s ease' }}>
-      <div style={{ marginBottom: 28 }}>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>
-          Action Center
-        </p>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32 }}>Your next steps</h1>
-        <p style={{ color: 'var(--text-secondary)', marginTop: 6 }}>
-          {pending.length} action{pending.length !== 1 ? 's' : ''} pending · {completed.length} completed
-        </p>
-      </div>
-
-      {/* Progress */}
-      <div style={{ marginBottom: 28, padding: '16px 20px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>Completion</span>
-          <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{completed.length}/{actions.length}</span>
-        </div>
-        <div style={{ height: 6, background: 'var(--surface2)', borderRadius: 100, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%', borderRadius: 100, background: 'var(--accent)',
-            width: `${actions.length ? (completed.length / actions.length) * 100 : 0}%`,
-            transition: 'width 0.4s ease'
-          }} />
-        </div>
-      </div>
-
-      {/* Pending */}
-      {pending.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: 12 }}>
-            Pending
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {pending.map((action, i) => {
-              const Icon = actionIcons[action.type] || ClipboardList;
-              const color = actionColors[action.type];
-              const isExpanded = expanded === action.id;
-              const relatedProducts = allProducts.filter(p => action.productIds?.includes(p.id));
-
-              return (
-                <div
-                  key={action.id}
-                  style={{
-                    background: 'var(--surface)', border: `1px solid ${isExpanded ? color + '40' : 'var(--border)'}`,
-                    borderRadius: 'var(--radius-lg)', overflow: 'hidden', transition: 'border 0.2s ease',
-                    animation: `fadeIn 0.2s ease ${i * 0.05}s both`
-                  }}
-                >
-                  <div
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', cursor: 'pointer' }}
-                    onClick={() => setExpanded(isExpanded ? null : action.id)}
-                  >
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-                      background: `${color}18`, border: `1px solid ${color}30`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      <Icon size={16} color={color} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14 }}>{action.label}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                        {action.productIds.length} product{action.productIds.length !== 1 ? 's' : ''} affected
-                      </div>
-                    </div>
-                    <span className={`tag tag-${action.priority}`}>{action.priority}</span>
-                    <ChevronRight size={14} color="var(--text-muted)" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s ease' }} />
-                  </div>
-
-                  {isExpanded && (
-                    <div style={{ borderTop: '1px solid var(--border)', padding: '14px 18px', animation: 'fadeIn 0.2s ease' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
-                        {relatedProducts.map(p => (
-                          <div key={p.id} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px',
-                            background: 'var(--surface2)', borderRadius: 'var(--radius)'
-                          }}>
-                            <div>
-                              <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                                {p.sku ? `SKU: ${p.sku}` : 'No SKU'} · Qty: {p.quantity ?? '?'}
-                              </div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              {p.price ? <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{fmt(p.price)}</div> : <div style={{ fontSize: 11, color: 'var(--warning)' }}>No price</div>}
-                              {p.isDeadStock && p.stuckValue && <div style={{ fontSize: 10, color: 'var(--danger)', fontFamily: 'var(--font-mono)' }}>{fmt(p.stuckValue)} stuck</div>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                          className="btn btn-primary"
-                          style={{ fontSize: 12, padding: '8px 16px' }}
-                          onClick={() => { setDone(d => [...d, action.id]); setExpanded(null); }}
-                        >
-                          <Check size={13} /> Mark done
-                        </button>
-                        <button className="btn btn-ghost" style={{ fontSize: 12, padding: '8px 16px' }} onClick={() => onNavigate('inventory')}>
-                          View products
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Completed */}
-      {completed.length > 0 && (
+    <div className="page" style={{ maxWidth: 800 }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h3 style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: 12 }}>
-            Completed
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {completed.map(action => (
-              <div key={action.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-                background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-                opacity: 0.5, animation: 'fadeIn 0.2s ease'
-              }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--success-dim)', border: '1px solid rgba(93,190,138,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Check size={12} color="var(--success)" />
-                </div>
-                <span style={{ fontSize: 13, textDecoration: 'line-through', color: 'var(--text-muted)' }}>{action.label}</span>
-                <button
-                  onClick={() => setDone(d => d.filter(id => id !== action.id))}
-                  style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none' }}
-                >
-                  Undo
-                </button>
-              </div>
-            ))}
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+            Action Center
+          </div>
+          <h1 className="page-title" style={{ fontSize: 28 }}>Your next steps</h1>
+          <p className="page-subtitle">
+            {loading ? 'Loading…' : `${allTasks.length} action${allTasks.length !== 1 ? 's' : ''} pending`}
+          </p>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={refetch} disabled={loading}>
+          <RefreshCw size={13} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--danger-dim)', border: '1px solid rgba(220,38,38,0.2)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--danger)' }}>
+          Failed to load actions. <button onClick={refetch} style={{ textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', color: 'var(--danger)', fontSize: 13, fontFamily: 'var(--font-body)' }}>Retry</button>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[1,2,3].map(i => (
+            <div key={i} className="skeleton" style={{ height: 64, borderRadius: 'var(--radius-lg)' }} />
+          ))}
+        </div>
+      )}
+
+      {!loading && allTasks.length === 0 && (
+        <div className="empty-state" style={{ padding: '64px 24px' }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%', background: 'var(--success-dim)',
+            border: '1px solid rgba(22,163,74,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <Check size={24} color="var(--success)" />
+          </div>
+          <h3>All caught up!</h3>
+          <p>No actions needed right now. Check back after adding inventory.</p>
+        </div>
+      )}
+
+      {!loading && p1.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <AlertTriangle size={13} color="var(--danger)" />
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              Critical — Resolve First
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {p1.map((t, i) => <TaskCard key={t.id} task={t} i={i} />)}
           </div>
         </div>
       )}
 
-      {pending.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '48px 0', animation: 'slideUp 0.4s ease' }}>
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--success-dim)', border: '1px solid rgba(93,190,138,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-            <Check size={28} color="var(--success)" />
+      {!loading && p2.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <DollarSign size={13} color="var(--success)" />
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              Revenue Impact
+            </span>
           </div>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 24, marginBottom: 8 }}>All caught up!</h3>
-          <p style={{ color: 'var(--text-muted)' }}>Check back after adding new inventory.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {p2.map((t, i) => <TaskCard key={t.id} task={t} i={i} />)}
+          </div>
+        </div>
+      )}
+
+      {!loading && other.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <ClipboardList size={13} color="var(--text-muted)" />
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              Data Quality
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {other.map((t, i) => <TaskCard key={t.id} task={t} i={p2.length + i} />)}
+          </div>
         </div>
       )}
     </div>

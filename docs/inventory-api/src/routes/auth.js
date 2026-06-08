@@ -77,6 +77,25 @@ router.post('/login', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.post('/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'new password must be at least 8 characters' });
+    }
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'user not found' });
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) return res.status(401).json({ error: 'current password is incorrect' });
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: req.userId }, data: { passwordHash: newHash } });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 router.post('/logout', (req, res) => {
   // JWT is stateless; client drops the token. Token blocklist deferred to Phase 2.
   res.json({ ok: true });

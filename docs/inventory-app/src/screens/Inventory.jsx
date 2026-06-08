@@ -14,6 +14,7 @@ function mapProduct(p) {
   if (!p.name) missingDetails.push('name');
   if (!p.sellingPrice) missingDetails.push('price');
   if (!totalQty && lots.length > 0) missingDetails.push('quantity');
+  const isDeadStock = totalQty > 0 && !p.sellingPrice && status !== 'verified';
   return {
     ...p,
     name: p.name || 'Unnamed product',
@@ -22,7 +23,8 @@ function mapProduct(p) {
     missingDetails,
     quantity: totalQty || null,
     price: p.sellingPrice ? parseFloat(p.sellingPrice) : null,
-    isDeadStock: false,
+    isDeadStock,
+    daysUnmoved: p.daysUnmoved ?? null,
   };
 }
 
@@ -146,12 +148,34 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
                 onClick={() => onSelectProduct(p)}
               >
                 <td style={{ padding: '14px 16px' }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{p.name}</div>
-                  {p.missingDetails.length > 0 && (
-                    <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2 }}>
-                      Missing: {p.missingDetails.join(', ')}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: 7, flexShrink: 0,
+                      border: '1px solid var(--border)', overflow: 'hidden',
+                      background: 'var(--accent-dim)',
+                      position: 'relative',
+                    }}>
+                      {p.images?.[0] ? (
+                        <img
+                          src={p.images[0]}
+                          alt=""
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
+                          {(p.name || '?').charAt(0).toUpperCase()}
+                        </span>
+                      )}
                     </div>
-                  )}
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: 13 }}>{p.name}</div>
+                      {p.missingDetails.length > 0 && (
+                        <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2 }}>
+                          Missing: {p.missingDetails.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </td>
                 <td style={{ padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11, color: p.sku ? 'var(--text-secondary)' : 'var(--danger)' }}>
                   {p.sku || '—'}
@@ -170,7 +194,9 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
                   {p.isDeadStock && (
                     <div>
                       <span className="tag tag-dead">Dead</span>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{p.daysUnmoved}d</div>
+                      {p.daysUnmoved != null && (
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{p.daysUnmoved}d unmoved</div>
+                      )}
                     </div>
                   )}
                 </td>
