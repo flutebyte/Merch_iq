@@ -1,8 +1,5 @@
 import React from 'react';
-import {
-  TrendingDown, AlertTriangle, Zap, ClipboardList, ArrowRight,
-  TrendingUp, Package, Eye
-} from 'lucide-react';
+import { TrendingDown, AlertTriangle, Zap, ClipboardList, ArrowRight, TrendingUp, Package, Eye, Activity } from 'lucide-react';
 import { useFetch } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrand } from '../contexts/BrandContext';
@@ -17,64 +14,109 @@ function mapProduct(p) {
   if (!p.name) missingDetails.push('name');
   if (!p.sellingPrice) missingDetails.push('price');
   if (!totalQty && lots.length > 0) missingDetails.push('quantity');
-  // Dead stock: has stock but all lots are unverified/photo-only and no price set
   const isDeadStock = totalQty > 0 && !p.sellingPrice && status !== 'verified';
   const stuckValue = isDeadStock && p.costPrice ? totalQty * parseFloat(p.costPrice) : null;
   return { ...p, status, missingDetails, quantity: totalQty || null, price: p.sellingPrice ? parseFloat(p.sellingPrice) : null, isDeadStock, stuckValue };
 }
 
-const fmt = (n) => n == null ? '—' : `₹${n >= 100000 ? (n / 100000).toFixed(1) + 'L' : n.toLocaleString('en-IN')}`;
+const fmt = (n) => {
+  if (n == null) return '—';
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+  return `₹${n.toLocaleString('en-IN')}`;
+};
 
-const MetricCard = ({ icon: Icon, label, value, sub, color, accent, onClick }) => (
-  <button
-    onClick={onClick}
-    style={{
-      background: 'var(--surface)', border: `1px solid var(--border)`,
-      borderRadius: 'var(--radius-lg)', padding: '20px', textAlign: 'left',
-      cursor: onClick ? 'pointer' : 'default', transition: 'all 0.15s ease', width: '100%',
-      position: 'relative', overflow: 'hidden'
-    }}
-    onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = accent || 'var(--border2)'; e.currentTarget.style.background = 'var(--surface2)'; } }}
-    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}
-  >
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 8, background: `${color}18`,
-        border: `1px solid ${color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center'
-      }}>
-        <Icon size={16} color={color} />
+const METRIC_CARD_THEMES = {
+  danger:  { bg: 'var(--danger-dim)',  border: 'rgba(248,113,113,0.22)', numColor: 'var(--danger)',  iconBg: 'rgba(248,113,113,0.14)' },
+  success: { bg: 'var(--success-dim)', border: 'rgba(52,211,153,0.22)',  numColor: 'var(--success)', iconBg: 'rgba(52,211,153,0.14)' },
+  warning: { bg: 'var(--warning-dim)', border: 'rgba(251,191,36,0.22)',  numColor: 'var(--warning)', iconBg: 'rgba(251,191,36,0.14)' },
+  accent:  { bg: 'var(--accent-dim)',  border: 'var(--accent-border)',   numColor: 'var(--accent)',  iconBg: 'rgba(99,102,241,0.14)' },
+};
+
+function MetricCard({ icon: Icon, label, value, sub, theme = 'accent', onClick }) {
+  const t = METRIC_CARD_THEMES[theme];
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: t.bg, border: `1px solid ${t.border}`,
+        borderRadius: 'var(--radius-lg)', padding: '20px',
+        textAlign: 'left', cursor: onClick ? 'pointer' : 'default',
+        transition: 'box-shadow 0.15s ease, transform 0.1s ease',
+        width: '100%', boxShadow: 'var(--shadow-sm)',
+      }}
+      onMouseEnter={e => { if (onClick) { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.transform = 'translateY(-1px)'; } }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 8, background: t.iconBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <Icon size={16} color={t.numColor} />
+        </div>
+        {onClick && <ArrowRight size={14} color={t.numColor} style={{ opacity: 0.6 }} />}
       </div>
-      {onClick && <ArrowRight size={14} color="var(--text-muted)" />}
+      <div style={{ fontSize: 30, fontWeight: 700, color: t.numColor, lineHeight: 1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em' }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, marginTop: 6 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+    </button>
+  );
+}
+
+function ConfidenceBadge({ score }) {
+  const color = score >= 70 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--danger)';
+  const bg    = score >= 70 ? 'var(--success-dim)' : score >= 40 ? 'var(--warning-dim)' : 'var(--danger-dim)';
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+      background: bg, borderRadius: 100, border: `1px solid ${color}30`,
+    }}>
+      <Activity size={11} color={color} />
+      <span style={{ fontSize: 12, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums' }}>
+        {score ?? '—'}% confidence
+      </span>
     </div>
-    <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-mono)', color, lineHeight: 1 }}>{value}</div>
-    <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, marginTop: 6 }}>{label}</div>
-    {sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
-  </button>
-);
+  );
+}
 
 export default function Dashboard({ onNavigate }) {
   const { user } = useAuth();
   const { brand } = useBrand();
-  const { data: rawProducts, loading } = useFetch('/products');
+  const { data: rawProducts, loading: productsLoading } = useFetch('/products');
+  const { data: actionData,  loading: actionsLoading  } = useFetch('/action-queue');
+  const { data: confidenceData } = useFetch(brand?.id ? `/brands/${brand.id}/confidence` : null);
+
   const products     = (rawProducts || []).map(mapProduct);
-  const pendingActionsList = [];  // populated from API in Phase 2
+  const actionTasks  = actionData?.tasks || [];
+  const topActions   = actionTasks.slice(0, 4);
+  const confidence   = confidenceData?.score ?? null;
 
   const atRisk         = products.filter(p => p.missingDetails.length > 0 || p.status !== 'verified').length;
-  const deadStockValue = products.filter(p => p.isDeadStock && p.stuckValue).reduce((s, p) => s + p.stuckValue, 0);
-  const deadStockCount = products.filter(p => p.isDeadStock).length;
-  const pendingActions = pendingActionsList.length;
+  const deadStockItems = products.filter(p => p.isDeadStock);
+  const deadStockValue = deadStockItems.filter(p => p.stuckValue).reduce((s, p) => s + p.stuckValue, 0);
+  const deadStockCount = deadStockItems.length;
+  const pendingActions = actionTasks.length;
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
-    <div style={{ padding: '28px 24px', maxWidth: 1100, margin: '0 auto', animation: 'fadeIn 0.3s ease' }}>
+    <div className="page" style={{ animation: 'fadeIn 0.25s ease' }}>
       {/* Header */}
-      <div style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
+      <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 36, lineHeight: 1 }}>
-            Good morning, <em style={{ color: 'var(--accent)' }}>{brand?.name || user?.email?.split('@')[0] || 'there'}</em>
+          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)', lineHeight: 1.2 }}>
+            {greeting}, <span style={{ color: 'var(--accent)' }}>{brand?.name || user?.email?.split('@')[0] || 'there'}</span>
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
-            {loading ? 'Loading…' : `${products.length} product${products.length !== 1 ? 's' : ''} in your inventory`}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              {productsLoading ? 'Loading…' : `${products.length} product${products.length !== 1 ? 's' : ''}`}
+            </p>
+            {confidence !== null && <ConfidenceBadge score={confidence} />}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => onNavigate('photo')}>
@@ -86,137 +128,159 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </div>
 
-      {/* Recovery banner */}
+      {/* Recovery banner — only when dead stock value is meaningful */}
       {deadStockValue > 0 && (
         <div style={{
-          padding: '16px 20px', marginBottom: 28,
-          background: 'linear-gradient(135deg, rgba(232,197,71,0.08) 0%, rgba(232,197,71,0.03) 100%)',
+          padding: '14px 20px', marginBottom: 24,
+          background: 'linear-gradient(135deg, var(--accent-dim), rgba(99,102,241,0.03))',
           border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-lg)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
-          animation: 'slideUp 0.4s ease'
+          boxShadow: 'var(--shadow-sm)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Zap size={18} color="#0D0D0B" />
+            <div style={{ width: 38, height: 38, borderRadius: 9, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Zap size={17} color="#fff" />
             </div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>
-                <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{fmt(deadStockValue)}</span>
-                {' '}in potential recovery available
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
+                <span style={{ color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>{fmt(deadStockValue)}</span>
+                {' '}in potential recovery
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{deadStockCount} dead stock products identified · Take action now</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {deadStockCount} dead stock item{deadStockCount !== 1 ? 's' : ''} identified
+              </div>
             </div>
           </div>
-          <button className="btn btn-primary" style={{ fontSize: 12, padding: '8px 16px' }} onClick={() => onNavigate('actions')}>
+          <button className="btn btn-primary btn-sm" onClick={() => onNavigate('actions')}>
             Review opportunities <ArrowRight size={13} />
           </button>
         </div>
       )}
 
-      {/* Main metric cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+      {/* Metric cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
         <MetricCard
-          icon={AlertTriangle} label="Inventory At Risk" color="var(--danger)"
-          value={atRisk} sub={`${atRisk} products can't be sold`}
-          accent="var(--danger)" onClick={() => onNavigate('inventory')}
+          icon={AlertTriangle} theme="danger"
+          label="Inventory At Risk" value={atRisk}
+          sub={atRisk === 0 ? 'All products ready to sell' : `${atRisk} need attention`}
+          onClick={() => onNavigate('inventory')}
         />
         <MetricCard
-          icon={TrendingUp} label="Potential Recovery" color="var(--success)"
-          value={fmt(deadStockValue)} sub={`Across ${deadStockCount} dead stock items`}
-          accent="var(--success)" onClick={() => onNavigate('actions')}
+          icon={TrendingUp} theme="success"
+          label="Potential Recovery" value={fmt(deadStockValue)}
+          sub={`${deadStockCount} dead stock item${deadStockCount !== 1 ? 's' : ''}`}
+          onClick={() => onNavigate('actions')}
         />
         <MetricCard
-          icon={TrendingDown} label="Dead Stock Opportunity" color="var(--warning)"
-          value={deadStockCount} sub="Products unmoved 30+ days"
-          accent="var(--warning)" onClick={() => onNavigate('inventory')}
+          icon={TrendingDown} theme="warning"
+          label="Dead Stock" value={deadStockCount}
+          sub="Unmoved products"
+          onClick={() => onNavigate('inventory')}
         />
         <MetricCard
-          icon={ClipboardList} label="Action Center" color="var(--accent)"
-          value={pendingActions} sub="Pending tasks"
-          accent="var(--accent)" onClick={() => onNavigate('actions')}
+          icon={ClipboardList} theme="accent"
+          label="Action Center" value={pendingActions}
+          sub={actionsLoading ? 'Loading…' : 'Pending tasks'}
+          onClick={() => onNavigate('actions')}
         />
       </div>
 
-      {/* Two-column: Action Center + Dead Stock */}
+      {/* Two columns: Action Center preview + Dead Stock preview */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-        {/* Action Center */}
+        {/* Action Center preview */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <ClipboardList size={16} color="var(--accent)" />
+              <ClipboardList size={15} color="var(--accent)" />
               <span style={{ fontWeight: 600, fontSize: 14 }}>Action Center</span>
+              {pendingActions > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 100,
+                  background: 'var(--accent)', color: '#fff', minWidth: 18, textAlign: 'center'
+                }}>{pendingActions}</span>
+              )}
             </div>
             <button
               onClick={() => onNavigate('actions')}
-              style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none' }}
+              style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'var(--font-body)' }}
             >
               View all →
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {pendingActionsList.length === 0 && (
-              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                No pending actions yet
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {actionsLoading && <div className="skeleton" style={{ height: 48, borderRadius: 'var(--radius)' }} />}
+            {!actionsLoading && topActions.length === 0 && (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                No pending actions — well done!
               </div>
             )}
-            {pendingActionsList.slice(0, 4).map(action => (
-              <div key={action.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                background: 'var(--surface2)', borderRadius: 'var(--radius)',
-                cursor: 'pointer', transition: 'background 0.1s ease'
-              }}
+            {topActions.map(t => (
+              <div
+                key={t.id}
+                onClick={() => onNavigate('actions')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                  background: 'var(--surface2)', borderRadius: 'var(--radius)',
+                  cursor: 'pointer', transition: 'background 0.1s ease'
+                }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface3)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface2)'}
-                onClick={() => onNavigate('actions')}
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{action.label}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</div>
                 </div>
-                <span className={`tag tag-${action.priority}`}>{action.priority}</span>
+                <span style={{
+                  fontSize: 10, padding: '1px 6px', borderRadius: 100, fontWeight: 600, flexShrink: 0,
+                  color: t.priority <= 2 ? 'var(--danger)' : t.priority === 3 ? 'var(--warning)' : 'var(--text-muted)',
+                  background: t.priority <= 2 ? 'var(--danger-dim)' : t.priority === 3 ? 'var(--warning-dim)' : 'var(--surface3)',
+                }}>P{t.priority}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Dead Stock */}
+        {/* Dead Stock preview */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <TrendingDown size={16} color="var(--warning)" />
+              <TrendingDown size={15} color="var(--warning)" />
               <span style={{ fontWeight: 600, fontSize: 14 }}>Dead Stock</span>
             </div>
             <button
               onClick={() => onNavigate('inventory')}
-              style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none' }}
+              style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'var(--font-body)' }}
             >
               View all →
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {products.filter(p => p.isDeadStock).length === 0 && (
-              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                {loading ? 'Loading…' : 'No dead stock detected'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {productsLoading && <div className="skeleton" style={{ height: 48, borderRadius: 'var(--radius)' }} />}
+            {!productsLoading && deadStockItems.length === 0 && (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                No dead stock detected
               </div>
             )}
-            {products.filter(p => p.isDeadStock).slice(0, 4).map(p => (
-              <div key={p.id} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 12px',
-                background: 'var(--surface2)', borderRadius: 'var(--radius)',
-                cursor: 'pointer', transition: 'background 0.1s ease'
-              }}
+            {deadStockItems.slice(0, 4).map(p => (
+              <div
+                key={p.id}
+                onClick={() => onNavigate('inventory')}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 12px',
+                  background: 'var(--surface2)', borderRadius: 'var(--radius)',
+                  cursor: 'pointer', transition: 'background 0.1s ease'
+                }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface3)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface2)'}
-                onClick={() => onNavigate('inventory')}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.daysUnmoved} days · qty {p.quantity ?? '?'}</div>
+                  <div style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>qty {p.quantity ?? '?'}</div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   {p.stuckValue
-                    ? <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--warning)' }}>{fmt(p.stuckValue)}</div>
+                    ? <div style={{ fontSize: 12, color: 'var(--warning)', fontWeight: 600 }}>{fmt(p.stuckValue)}</div>
                     : <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>price missing</div>
                   }
                 </div>
@@ -226,40 +290,50 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </div>
 
-      {/* Products requiring attention */}
+      {/* Products needing attention */}
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Package size={16} color="var(--danger)" />
-            <span style={{ fontWeight: 600, fontSize: 14 }}>Products Requiring Attention</span>
+            <Package size={15} color="var(--danger)" />
+            <span style={{ fontWeight: 600, fontSize: 14 }}>Products Needing Attention</span>
           </div>
           <button
             onClick={() => onNavigate('inventory')}
-            style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none' }}
+            style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'var(--font-body)' }}
           >
             View all →
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-          {loading && <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: 13 }}>Loading products…</div>}
-          {!loading && products.filter(p => p.missingDetails.length > 0 || p.status !== 'verified').length === 0 && (
-            <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: 13 }}>All products verified — great job!</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+          {productsLoading && [1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 68, borderRadius: 'var(--radius)' }} />)}
+          {!productsLoading && products.filter(p => p.missingDetails.length > 0 || p.status !== 'verified').length === 0 && (
+            <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: 13, gridColumn: '1/-1' }}>
+              All products look good!
+            </div>
           )}
-          {products.filter(p => p.missingDetails.length > 0 || p.status !== 'verified').slice(0, 4).map(p => (
-            <div key={p.id} style={{
-              padding: '14px', background: 'var(--surface2)', borderRadius: 'var(--radius)',
-              border: '1px solid var(--border)', cursor: 'pointer'
-            }}
+          {products.filter(p => p.missingDetails.length > 0 || p.status !== 'verified').slice(0, 6).map(p => (
+            <div
+              key={p.id}
               onClick={() => onNavigate('inventory')}
+              style={{
+                padding: '12px', background: 'var(--surface2)', borderRadius: 'var(--radius)',
+                border: '1px solid var(--border)', cursor: 'pointer',
+                transition: 'border-color 0.1s ease, background 0.1s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.background = 'var(--surface3)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface2)'; }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{p.name || 'Unnamed product'}</span>
                 <span className={`tag tag-${p.status}`}>{p.status}</span>
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {p.missingDetails.map(d => (
-                  <span key={d} style={{ fontSize: 10, padding: '2px 8px', background: 'var(--danger-dim)', color: 'var(--danger)', borderRadius: 100, border: '1px solid rgba(232,90,79,0.2)' }}>
+                  <span key={d} style={{
+                    fontSize: 10, padding: '1px 7px', background: 'var(--danger-dim)', color: 'var(--danger)',
+                    borderRadius: 100, border: '1px solid rgba(220,38,38,0.2)'
+                  }}>
                     missing {d}
                   </span>
                 ))}

@@ -35,7 +35,7 @@ export default function Login() {
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--bg)', padding: '24px',
-      backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(232,197,71,0.07) 0%, transparent 55%), radial-gradient(ellipse at 80% 100%, rgba(232,197,71,0.04) 0%, transparent 50%)',
+      backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.14) 0%, transparent 55%), radial-gradient(ellipse at 80% 100%, rgba(99,102,241,0.06) 0%, transparent 50%)',
     }}>
       <div style={{ width: '100%', maxWidth: 400, animation: 'fadeIn 0.4s ease' }}>
         <div style={{ marginBottom: 40, textAlign: 'center' }}>

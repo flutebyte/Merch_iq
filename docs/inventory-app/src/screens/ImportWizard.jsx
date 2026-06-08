@@ -73,7 +73,7 @@ export default function ImportWizard({ onComplete }) {
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: i <= step ? 'var(--accent)' : 'var(--surface2)',
-                color: i <= step ? '#0D0D0B' : 'var(--text-muted)',
+                color: i <= step ? '#fff' : 'var(--text-muted)',
                 fontSize: 12, fontWeight: 700, border: `2px solid ${i <= step ? 'var(--accent)' : 'var(--border)'}`,
                 transition: 'all 0.2s ease'
               }}>{i < step ? '✓' : i + 1}</div>

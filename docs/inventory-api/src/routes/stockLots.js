@@ -3,9 +3,18 @@ const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { STATES, TRIGGERS, transition, inferTrigger } = require('../services/confidenceStateMachine');
 const { writeEvent } = require('../services/inventoryEventWriter');
+const { invalidateCache } = require('../services/actionQueueGenerator');
 
 const router = express.Router();
 router.use(requireAuth);
+
+async function triggerConfidenceUpdate(brandId) {
+  try {
+    const { getQueue } = require('../services/jobQueue');
+    const boss = getQueue();
+    await boss.send('confidence-score-update', { brandId }, { singletonKey: `confidence-${brandId}` });
+  } catch (_) { /* non-fatal — queue may not be ready */ }
+}
 
 const TRIGGER_TO_EVENT_TYPE = {
   [TRIGGERS.PHOTO_CAPTURED]:    'photo_capture',
@@ -55,17 +64,17 @@ router.post('/', async (req, res, next) => {
     const lot = await prisma.$transaction(async (tx) => {
       const created = await tx.stockLot.create({
         data: {
-          brandId:          req.brandId,
+          brandId:           req.brandId,
           productId,
-          quantity:         quantity ?? null,
+          quantity:          quantity ?? null,
           quantityCertainty: quantityCertainty || 'unknown',
-          inventoryStatus:  inventoryStatus || 'main_stock',
-          confidenceState:  newState,
-          preConflictState: newPreConflictState,
+          inventoryStatus:   inventoryStatus || 'main_stock',
+          confidenceState:   newState,
+          preConflictState:  newPreConflictState,
           source,
-          photos:           photos || [],
-          notes:            notes  ?? null,
-          version:          0,
+          photos:            photos || [],
+          notes:             notes  ?? null,
+          version:           0,
         },
       });
       await writeEvent(tx, {
@@ -77,6 +86,9 @@ router.post('/', async (req, res, next) => {
       });
       return created;
     });
+
+    await triggerConfidenceUpdate(req.brandId);
+    invalidateCache(req.brandId);
 
     res.status(201).json(lot);
   } catch (err) { next(err); }
@@ -115,6 +127,7 @@ router.patch('/:id', async (req, res, next) => {
     if (version !== undefined && existing.version !== version) {
       return res.status(409).json({
         error:          'version conflict',
+        message:        'This item was updated while you were editing. Please reload and try again.',
         currentVersion: existing.version,
         clientVersion:  version,
       });
@@ -171,6 +184,9 @@ router.patch('/:id', async (req, res, next) => {
       return lot;
     });
 
+    await triggerConfidenceUpdate(req.brandId);
+    invalidateCache(req.brandId);
+
     res.json(updated);
   } catch (err) {
     if (err.message?.includes('not allowed while in conflict_detected') ||
@@ -179,6 +195,24 @@ router.patch('/:id', async (req, res, next) => {
     }
     next(err);
   }
+});
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const existing = await prisma.stockLot.findFirst({
+      where: { id: req.params.id, brandId: req.brandId },
+    });
+    if (!existing) return res.status(404).json({ error: 'not found' });
+
+    // Cascade delete inventory events first, then the lot
+    await prisma.$transaction(async (tx) => {
+      await tx.inventoryEvent.deleteMany({ where: { stockLotId: existing.id } });
+      await tx.stockLot.delete({ where: { id: existing.id } });
+    });
+
+    invalidateCache(req.brandId);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

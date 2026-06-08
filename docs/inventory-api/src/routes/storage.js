@@ -2,6 +2,8 @@ const express = require('express');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs   = require('fs');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -59,6 +61,23 @@ router.post('/presigned-upload', async (req, res, next) => {
       fileUrl: `https://${process.env.S3_BUCKET}/${key}`,
       fileId:  key,
     });
+  } catch (err) { next(err); }
+});
+
+// POST /storage/upload — dev-mode direct upload (raw binary body, no base64 overhead)
+router.post('/upload', (req, res, next) => {
+  try {
+    const mimeType = (req.headers['content-type'] || 'image/jpeg').split(';')[0].trim();
+    const buffer = req.body;
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return res.status(400).json({ error: 'No image data received' });
+    }
+    const ext = (mimeType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const fileName = `${uuidv4()}.${ext}`;
+    const uploadsDir = path.join(__dirname, '../../public/dev-uploads');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+    res.json({ fileUrl: `/dev-uploads/${fileName}`, fileName });
   } catch (err) { next(err); }
 });
 

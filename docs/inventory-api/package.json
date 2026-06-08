@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "dev": "nodemon --signal SIGINT --delay 1 src/index.js",
     "test": "jest --runInBand",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
@@ -17,9 +17,12 @@
     "@aws-sdk/s3-request-presigner": "^3.600.0",
     "@prisma/client": "^5.16.0",
     "bcryptjs": "^2.4.3",
+    "busboy": "^1.6.0",
     "cors": "^2.8.5",
+    "csv-parse": "^6.2.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "xlsx": "^0.18.5",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "pg-boss": "^9.0.3",
@@ -32,6 +35,8 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/__tests__/**/*.test.js"]
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ]
   }
 }

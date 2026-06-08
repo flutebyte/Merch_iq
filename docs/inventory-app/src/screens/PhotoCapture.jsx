@@ -1,65 +1,219 @@
-import React, { useState } from 'react';
-import { Camera, Plus, Check, AlertCircle, Loader } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Camera, Plus, Check, AlertCircle, Loader, AlertTriangle } from 'lucide-react';
 import { useApiRequest } from '../hooks/useApi';
+import { useAuth } from '../contexts/AuthContext';
+import { uploadImage } from '../utils/imageUpload';
+
+function Field({ label, optional, value, onChange, placeholder, type = 'text', mono = false }) {
+  return (
+    <div>
+      <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+        {label} {optional && <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional)</span>}
+      </label>
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        type={type}
+        style={{
+          width: '100%', padding: '10px 14px',
+          background: 'var(--surface2)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', color: 'var(--text-primary)',
+          fontSize: 14, fontFamily: mono ? 'var(--font-mono)' : 'inherit',
+          outline: 'none', boxSizing: 'border-box',
+        }}
+      />
+    </div>
+  );
+}
 
 export default function PhotoCapture({ onComplete }) {
   const [captured, setCaptured]   = useState([]);
-  const [current, setCurrent]     = useState({ name: '', quantity: '' });
+  const [current, setCurrent]     = useState({ name: '', sku: '', quantity: '', color: '' });
+  const [variant, setVariant]     = useState({ color: '', quantity: '' });
+  const [variants, setVariants]   = useState([]);
+  const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview]     = useState(null);
+  const [uploading, setUploading] = useState(false);
   const [error, setError]         = useState(null);
-  const { post, loading }         = useApiRequest();
+  const [conflict, setConflict]   = useState(null);
+  const { post, patch, loading }  = useApiRequest();
+  const { token }                 = useAuth();
+  const previewUrlRef             = useRef(null);
 
   const handleFileChange = (e) => {
     const f = e.target.files[0];
-    if (f) setPreview(URL.createObjectURL(f));
+    if (!f) return;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    const url = URL.createObjectURL(f);
+    previewUrlRef.current = url;
+    setImageFile(f);
+    setPreview(url);
   };
 
-  const handleCapture = async () => {
-    setError(null);
-    try {
-      // Create a product first (all fields optional)
-      const product = await post('/products', {
-        name: current.name || null,
-        category: null,
-      });
+  const handleAddVariant = () => {
+    const color = variant.color.trim();
+    const qty = parseInt(variant.quantity, 10);
+    if (!color) {
+      setError('Enter a color to add.');
+      return;
+    }
+    if (!variant.quantity || Number.isNaN(qty) || qty <= 0) {
+      setError('Enter a valid quantity for this color.');
+      return;
+    }
 
-      // Create a stock lot linked to that product
-      const qty = current.quantity ? parseInt(current.quantity, 10) : null;
-      await post('/stock-lots', {
-        productId: product.id,
-        quantity: qty,
-        quantityCertainty: qty != null ? 'approximate' : 'unknown',
-        source: 'photo',
-        confidenceState: current.name && qty != null
-          ? 'manually_entered'
-          : current.name
-          ? 'draft_photo'
-          : 'photo_only',
-      });
+    setVariants(prev => [...prev, { color, quantity: qty }]);
+    setVariant({ color: '', quantity: '' });
+    setError(null);
+  };
+
+  const buildStockItems = ({ quantity, color, variants }) => {
+    if (variants.length > 0) {
+      return variants.map(v => ({
+        quantity: v.quantity,
+        notes: `Color: ${v.color}`,
+      }));
+    }
+
+    return [{
+      quantity: quantity != null ? parseInt(quantity, 10) : null,
+      notes: color ? `Color: ${color}` : null,
+    }];
+  };
+
+  const doCapture = async (opts = {}) => {
+    setError(null);
+    setConflict(null);
+    try {
+      const productPayload = {
+        name: current.name.trim() || null,
+        sku:  opts.skipSku ? null : (current.sku.trim() || null),
+        color: current.color.trim() || (variants[0]?.color ?? null),
+      };
+
+      let product;
+      try {
+        product = await post('/products', { ...productPayload, forceCreate: opts.forceCreate });
+      } catch (err) {
+        if (err.status === 409 && err.data) { setConflict(err.data); return; }
+        throw err;
+      }
+
+      let finalPreview = preview;
+      if (imageFile) {
+        setUploading(true);
+        try {
+          const imageUrl = await uploadImage(imageFile, token);
+          await patch(`/products/${product.id}`, { images: [imageUrl] });
+          finalPreview = imageUrl;
+        } catch (_) {
+          // image upload failure does not block the capture
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      const items = buildStockItems({ quantity: current.quantity, color: current.color.trim() || null, variants });
+      for (const item of items) {
+        await post('/stock-lots', {
+          productId: product.id,
+          quantity: item.quantity,
+          quantityCertainty: item.quantity != null ? 'approximate' : 'unknown',
+          source: 'photo',
+          confidenceState: current.name && item.quantity != null ? 'manually_entered' : current.name ? 'draft_photo' : 'photo_only',
+          notes: item.notes || null,
+        });
+      }
+
+      window.dispatchEvent(new CustomEvent('inv:mutation'));
 
       setCaptured(prev => [{
         id: product.id,
         name: current.name || `Draft Item ${prev.length + 1}`,
-        quantity: current.quantity || 'Unknown',
-        preview,
+        quantity: variants.length > 0 ? variants.map(v => `${v.color}: ${v.quantity}`).join(', ') : (current.quantity || 'Unknown'),
+        preview: finalPreview,
         timestamp: new Date().toLocaleTimeString(),
       }, ...prev]);
-      setCurrent({ name: '', quantity: '' });
+
+      setCurrent({ name: '', sku: '', quantity: '', color: '' });
+      setVariant({ color: '', quantity: '' });
+      setVariants([]);
+      setImageFile(null);
       setPreview(null);
+      if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
     } catch (err) {
       setError(err.message || 'Failed to save. Please try again.');
     }
   };
 
+  const handleMerge = async () => {
+    if (!conflict?.existingProduct) return;
+    setError(null);
+    setConflict(null);
+
+    try {
+      const existingId = conflict.existingProduct.id;
+      let finalPreview = preview;
+      if (imageFile) {
+        setUploading(true);
+        try {
+          const imageUrl = await uploadImage(imageFile, token);
+          await patch(`/products/${existingId}`, { images: [imageUrl], color: current.color.trim() || conflict.existingProduct.color || null });
+          finalPreview = imageUrl;
+        } catch (_) {
+          // ignore image upload failures
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      if (!imageFile && current.color.trim() && !conflict.existingProduct.color) {
+        await patch(`/products/${existingId}`, { color: current.color.trim() });
+      }
+
+      const items = buildStockItems({ quantity: current.quantity, color: current.color.trim() || null, variants });
+      for (const item of items) {
+        await post('/stock-lots', {
+          productId: existingId,
+          quantity: item.quantity,
+          quantityCertainty: item.quantity != null ? 'approximate' : 'unknown',
+          source: 'photo',
+          confidenceState: current.name && item.quantity != null ? 'manually_entered' : current.name ? 'draft_photo' : 'photo_only',
+          notes: item.notes || null,
+        });
+      }
+
+      window.dispatchEvent(new CustomEvent('inv:mutation'));
+      setCaptured(prev => [{
+        id: existingId,
+        name: conflict.existingProduct.name,
+        quantity: variants.length > 0 ? variants.map(v => `${v.color}: ${v.quantity}`).join(', ') : (current.quantity || 'Unknown'),
+        preview: finalPreview,
+        timestamp: new Date().toLocaleTimeString(),
+      }, ...prev]);
+
+      setCurrent({ name: '', sku: '', quantity: '', color: '' });
+      setVariant({ color: '', quantity: '' });
+      setVariants([]);
+      setImageFile(null);
+      setPreview(null);
+      if (previewUrlRef.current) { URL.revokeObjectURL(previewUrlRef.current); previewUrlRef.current = null; }
+    } catch (err) {
+      setError(err.message || 'Failed to merge with existing product.');
+    }
+  };
+
+  const handleCapture      = () => doCapture();
+  const handleForceCreate  = () => { setConflict(null); doCapture({ skipSku: conflict?.error === 'sku_conflict', forceCreate: true }); };
+
+  const isLoading = loading || uploading;
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 24px', animation: 'fadeIn 0.3s ease' }}>
       <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 32, marginBottom: 8 }}>
-          Capture inventory
-        </h2>
-        <p style={{ color: 'var(--text-secondary)' }}>
-          Take a photo, add what you know. Name and quantity are optional.
-        </p>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 32, marginBottom: 8 }}>Capture inventory</h2>
+        <p style={{ color: 'var(--text-secondary)' }}>Take a photo, add what you know. All fields are optional.</p>
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
@@ -84,33 +238,85 @@ export default function PhotoCapture({ onComplete }) {
           )}
         </label>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-              Product name <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional)</span>
-            </label>
-            <input
-              value={current.name}
-              onChange={e => setCurrent(c => ({ ...c, name: e.target.value }))}
-              placeholder="e.g. Blue Floral Dress"
-              style={{ width: '100%', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-            />
+        <div style={{ display: 'grid', gap: 12 }}>
+          <Field label="Product name" optional value={current.name} onChange={v => setCurrent(c => ({ ...c, name: v }))} placeholder="e.g. Blue Floral Dress" />
+          <Field label="SKU" optional mono value={current.sku} onChange={v => setCurrent(c => ({ ...c, sku: v }))} placeholder="e.g. BFD-S-001" />
+          <Field label="Color" optional value={current.color} onChange={v => setCurrent(c => ({ ...c, color: v }))} placeholder="e.g. Navy" />
+          <Field label="Quantity" optional type="number" value={current.quantity} onChange={v => setCurrent(c => ({ ...c, quantity: v }))} placeholder="Leave blank if unknown" />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'block', marginBottom: 6 }}>More color variants</label>
+              <input
+                value={variant.color}
+                onChange={e => setVariant(v => ({ ...v, color: e.target.value }))}
+                placeholder="Color"
+                style={{ width: '100%', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'block', marginBottom: 6 }}>Qty</label>
+              <input
+                type="number"
+                min="1"
+                value={variant.quantity}
+                onChange={e => setVariant(v => ({ ...v, quantity: e.target.value }))}
+                placeholder="Qty"
+                style={{ width: '100%', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <button type="button" className="btn btn-primary" onClick={handleAddVariant} style={{ height: 42, padding: '0 16px' }}>
+              Add
+            </button>
           </div>
-          <div>
-            <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-              Quantity <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional)</span>
-            </label>
-            <input
-              value={current.quantity}
-              onChange={e => setCurrent(c => ({ ...c, quantity: e.target.value }))}
-              placeholder="Leave blank if unknown"
-              type="number"
-              style={{ width: '100%', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-            />
-          </div>
+
+          {variants.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '12px 14px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              {variants.map((v, index) => (
+                <div key={`${v.color}-${index}`} style={{ padding: '6px 10px', borderRadius: '999px', background: 'var(--surface2)', display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{v.color}: {v.quantity}</span>
+                  <button type="button" onClick={() => setVariants(prev => prev.filter((_, i) => i !== index))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 12 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {error && (
+        {conflict && (
+          <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--warning-dim)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 'var(--radius)' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+              <AlertTriangle size={14} color="var(--warning)" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                <strong>{conflict.message}</strong>
+                {conflict.existingProduct?.name && (
+                  <div style={{ fontWeight: 400, color: 'var(--text-secondary)', marginTop: 2 }}>
+                    Existing: {conflict.existingProduct.name}
+                    {conflict.existingProduct.sku ? ` · SKU ${conflict.existingProduct.sku}` : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => setConflict(null)} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }}>Cancel</button>
+              {conflict.error === 'duplicate_name' ? (
+                <>
+                  <button onClick={handleMerge} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}>
+                    Merge with existing
+                  </button>
+                  <button onClick={handleForceCreate} className="btn btn-warning" style={{ fontSize: 12, padding: '5px 12px', background: 'var(--warning)', borderColor: 'var(--warning)', color: '#000' }}>
+                    Keep separate
+                  </button>
+                </>
+              ) : (
+                <button onClick={handleForceCreate} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px', background: 'var(--warning)', borderColor: 'var(--warning)', color: '#000' }}>
+                  {conflict.error === 'sku_conflict' ? 'Create without SKU' : 'Create anyway'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {error && !conflict && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--danger-dim)', border: '1px solid rgba(232,90,79,0.25)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--danger)' }}>
             {error}
           </div>
@@ -125,11 +331,13 @@ export default function PhotoCapture({ onComplete }) {
 
         <button
           onClick={handleCapture}
-          disabled={loading}
+          disabled={isLoading}
           className="btn btn-primary"
           style={{ width: '100%', justifyContent: 'center', marginTop: 16, padding: '12px' }}
         >
-          {loading
+          {uploading
+            ? <><Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Uploading photo…</>
+            : loading
             ? <><Loader size={15} style={{ animation: 'spin 0.8s linear infinite' }} /> Saving…</>
             : <><Plus size={16} /> Add to inventory</>}
         </button>
