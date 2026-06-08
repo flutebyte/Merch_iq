@@ -88,6 +88,7 @@ export default function Dashboard({ onNavigate }) {
   const { data: rawProducts, loading: productsLoading } = useFetch('/products');
   const { data: actionData,  loading: actionsLoading  } = useFetch('/action-queue');
   const { data: confidenceData } = useFetch(brand?.id ? `/brands/${brand.id}/confidence` : null);
+  const { data: revenueData } = useFetch('/analytics/revenue?days=7');
 
   const products     = (rawProducts || []).map(mapProduct);
   const actionTasks  = actionData?.tasks || [];
@@ -99,6 +100,11 @@ export default function Dashboard({ onNavigate }) {
   const deadStockValue = deadStockItems.filter(p => p.stuckValue).reduce((s, p) => s + p.stuckValue, 0);
   const deadStockCount = deadStockItems.length;
   const pendingActions = actionTasks.length;
+
+  const weekRevenue  = revenueData?.totalRevenue ?? null;
+  const wowGrowth    = revenueData?.momGrowth ?? null;
+  const topPlatform  = revenueData?.platforms?.[0]?.platform ?? null;
+  const hasRevenue   = weekRevenue != null && weekRevenue > 0;
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -127,6 +133,62 @@ export default function Dashboard({ onNavigate }) {
           </button>
         </div>
       </div>
+
+      {/* Revenue Pulse Strip */}
+      {hasRevenue && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 0,
+          marginBottom: 20,
+          background: 'var(--surface1)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '14px 24px 14px 28px',
+          boxShadow: 'var(--shadow-sm)',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'var(--accent)', borderRadius: '4px 0 0 4px' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 32, flex: 1, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3, fontWeight: 500 }}>This Week</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', lineHeight: 1 }}>{fmt(weekRevenue)}</div>
+            </div>
+            {wowGrowth !== null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '4px 10px', borderRadius: 100,
+                  background: wowGrowth >= 0 ? 'var(--success-dim)' : 'var(--danger-dim)',
+                  border: `1px solid ${wowGrowth >= 0 ? 'rgba(52,211,153,0.25)' : 'rgba(248,113,113,0.25)'}`,
+                }}>
+                  {wowGrowth >= 0
+                    ? <TrendingUp size={12} color="var(--success)" />
+                    : <TrendingDown size={12} color="var(--danger)" />}
+                  <span style={{ fontSize: 13, fontWeight: 600, color: wowGrowth >= 0 ? 'var(--success)' : 'var(--danger)', fontVariantNumeric: 'tabular-nums' }}>
+                    {wowGrowth >= 0 ? '+' : ''}{wowGrowth}%
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>vs last week</span>
+              </div>
+            )}
+            {topPlatform && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ width: 1, height: 28, background: 'var(--border)' }} />
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3, fontWeight: 500 }}>Top Platform</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{topPlatform}</div>
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => onNavigate('sales')}
+            style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'var(--font-body)', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            See sales <ArrowRight size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Recovery banner — only when dead stock value is meaningful */}
       {deadStockValue > 0 && (
