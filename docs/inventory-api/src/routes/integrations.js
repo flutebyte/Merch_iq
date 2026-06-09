@@ -802,8 +802,12 @@ async function handlePlatformImport(req, res, next, expectedPlatform) {
     // Auto-create Product records for any new SKUs found in order items
     const skuMap = {};
     for (const order of parsed.orders) {
+      const size = order.metadata?.size || null;
+      const color = order.metadata?.color || null;
       for (const item of (order.items || [])) {
-        if (item.sku && !skuMap[item.sku]) skuMap[item.sku] = item.name || item.sku;
+        if (item.sku && !skuMap[item.sku]) {
+          skuMap[item.sku] = { name: item.name || item.sku, size, color };
+        }
       }
     }
     const skuList = Object.keys(skuMap);
@@ -816,7 +820,13 @@ async function handlePlatformImport(req, res, next, expectedPlatform) {
       const toCreate = skuList.filter(s => !existingSet.has(s));
       if (toCreate.length > 0) {
         await prisma.product.createMany({
-          data: toCreate.map(sku => ({ brandId, sku, name: skuMap[sku], category: 'Uncategorized' })),
+          data: toCreate.map(sku => ({
+            brandId, sku,
+            name: skuMap[sku].name,
+            size: skuMap[sku].size || null,
+            color: skuMap[sku].color || null,
+            category: 'Uncategorized',
+          })),
         });
       }
     }

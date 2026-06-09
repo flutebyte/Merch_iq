@@ -32,6 +32,8 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
     sku:      product.sku      || '',
     price:    product.price    != null ? String(product.price) : '',
     category: product.category || '',
+    size:     product.size     || '',
+    color:    product.color    || '',
   });
   const [verified, setVerified]         = useState(product.status === 'verified');
   const [verifying, setVerifying]       = useState(false);
@@ -108,6 +110,12 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
       } else if (key === 'category') {
         const category = values.category.trim() || null;
         await patch(`/products/${product.id}`, { category });
+      } else if (key === 'size') {
+        const size = values.size.trim() || null;
+        await patch(`/products/${product.id}`, { size });
+      } else if (key === 'color') {
+        const color = values.color.trim() || null;
+        await patch(`/products/${product.id}`, { color });
       }
       setEditing('');
       window.dispatchEvent(new CustomEvent('inv:mutation'));
@@ -353,6 +361,52 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
                 {values.category || 'Uncategorized'}
               </span>
               <button onClick={() => { setEditing('category'); setSaveError(null); }} style={S.editBtn}><Edit2 size={13} /></button>
+            </div>
+          )}
+        </div>
+
+        {/* Size */}
+        <div className="card" style={{ padding: 16 }}>
+          <div style={S.label}>Size</div>
+          {editing === 'size' ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input autoFocus value={values.size} onChange={e => setValues(v => ({ ...v, size: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') handleSave('size'); if (e.key === 'Escape') { setEditing(''); setSaveError(null); } }}
+                placeholder="e.g. M, L, XL, Free Size" style={S.input} />
+              <button className="btn btn-primary" style={S.saveBtn} disabled={saving} onClick={() => handleSave('size')}>
+                {saving ? <Loader size={12} style={S.spin} /> : 'Save'}
+              </button>
+              <button className="btn btn-ghost" style={S.cancelBtn} disabled={saving} onClick={() => { setEditing(''); setSaveError(null); }}>✕</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 18, fontWeight: 600, color: values.size ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                {values.size || '—'}
+              </span>
+              <button onClick={() => { setEditing('size'); setSaveError(null); }} style={S.editBtn}><Edit2 size={13} /></button>
+            </div>
+          )}
+        </div>
+
+        {/* Color */}
+        <div className="card" style={{ padding: 16 }}>
+          <div style={S.label}>Color</div>
+          {editing === 'color' ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input autoFocus value={values.color} onChange={e => setValues(v => ({ ...v, color: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter') handleSave('color'); if (e.key === 'Escape') { setEditing(''); setSaveError(null); } }}
+                placeholder="e.g. Blue, Red, Multicolor" style={S.input} />
+              <button className="btn btn-primary" style={S.saveBtn} disabled={saving} onClick={() => handleSave('color')}>
+                {saving ? <Loader size={12} style={S.spin} /> : 'Save'}
+              </button>
+              <button className="btn btn-ghost" style={S.cancelBtn} disabled={saving} onClick={() => { setEditing(''); setSaveError(null); }}>✕</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 18, fontWeight: 600, color: values.color ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                {values.color || '—'}
+              </span>
+              <button onClick={() => { setEditing('color'); setSaveError(null); }} style={S.editBtn}><Edit2 size={13} /></button>
             </div>
           )}
         </div>

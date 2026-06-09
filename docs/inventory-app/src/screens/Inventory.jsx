@@ -40,7 +40,12 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
   const statuses = ['all', 'verified', 'unverified', 'draft'];
 
   const filtered = allProducts.filter(p => {
-    const matchSearch = !search || (p.name || '').toLowerCase().includes(search.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(search.toLowerCase()));
+    const q = search.toLowerCase();
+    const matchSearch = !search
+      || (p.name || '').toLowerCase().includes(q)
+      || (p.sku && p.sku.toLowerCase().includes(q))
+      || (p.size && p.size.toLowerCase().includes(q))
+      || (p.color && p.color.toLowerCase().includes(q));
     const matchStatus = statusFilter === 'all' || p.status === statusFilter;
     const matchCat = categoryFilter === 'all' || p.category === categoryFilter;
     return matchSearch && matchStatus && matchCat;
@@ -169,11 +174,17 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
                     </div>
                     <div>
                       <div style={{ fontWeight: 500, fontSize: 13 }}>{p.name}</div>
-                      {p.missingDetails.length > 0 && (
-                        <div style={{ fontSize: 10, color: 'var(--danger)', marginTop: 2 }}>
-                          Missing: {p.missingDetails.join(', ')}
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
+                        {p.size && (
+                          <span style={{ fontSize: 9, padding: '1px 6px', background: 'var(--accent-dim)', color: 'var(--accent)', borderRadius: 4, border: '1px solid var(--accent-border)', fontWeight: 600, letterSpacing: '0.03em' }}>{p.size}</span>
+                        )}
+                        {p.color && (
+                          <span style={{ fontSize: 9, padding: '1px 6px', background: 'var(--surface2)', color: 'var(--text-secondary)', borderRadius: 4, border: '1px solid var(--border)', fontWeight: 500 }}>{p.color}</span>
+                        )}
+                        {p.missingDetails.length > 0 && (
+                          <span style={{ fontSize: 9, color: 'var(--danger)' }}>missing {p.missingDetails.join(', ')}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </td>
