@@ -723,7 +723,7 @@ function CsvUploadZone({ platformId, onUploadDone }) {
 function IntegrationsPane() {
   const { post, patch, loading: apiLoading } = useApiRequest();
   const { token } = useAuth();
-  const { data, loading, refetch } = useFetch('/integrations');
+  const { data, loading, error, refetch } = useFetch('/integrations');
   const integrations = data?.integrations || [];
 
   const [busy, setBusy]             = useState({});
@@ -907,6 +907,23 @@ function IntegrationsPane() {
   };
 
   if (loading) return <div className="skeleton" style={{ height: 300, borderRadius: 'var(--radius)' }} />;
+
+  if (error) return (
+    <div className="empty-state" style={{ padding: '48px 24px' }}>
+      <AlertTriangle size={28} color="var(--danger)" style={{ opacity: 0.7 }} />
+      <h3>Couldn&apos;t load integrations</h3>
+      <p>We couldn&apos;t reach the server. Check your connection and try again.</p>
+      <button className="btn btn-ghost btn-sm" onClick={refetch} style={{ marginTop: 14 }}>Retry</button>
+    </div>
+  );
+
+  if (!integrations.length) return (
+    <div className="empty-state" style={{ padding: '48px 24px' }}>
+      <Plug size={28} style={{ opacity: 0.4 }} />
+      <h3>No sales channels connected yet</h3>
+      <p>Connect Meesho, Amazon, Shopify and more to sync orders and update inventory automatically.</p>
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
