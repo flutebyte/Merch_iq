@@ -33,7 +33,7 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
 
-  const { data: rawProducts, loading } = useFetch('/products');
+  const { data: rawProducts, loading, error, refetch } = useFetch('/products');
   const allProducts = (rawProducts || []).map(mapProduct);
 
   const categories = ['all', ...new Set(allProducts.map(p => p.category))];
@@ -133,7 +133,28 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {loading && [1, 2, 3, 4, 5].map(i => (
+              <tr key={`sk-${i}`}>
+                <td colSpan={8} style={{ padding: '10px 16px' }}>
+                  <div className="skeleton" style={{ height: 24 }} />
+                </td>
+              </tr>
+            ))}
+            {!loading && error && (
+              <tr>
+                <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--danger)' }}>
+                  <div>Couldn&apos;t load products.{' '}
+                    <button
+                      onClick={refetch}
+                      style={{ textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: 13, fontFamily: 'var(--font-body)' }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!loading && !error && filtered.length === 0 && (
               <tr>
                 <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <Package size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
