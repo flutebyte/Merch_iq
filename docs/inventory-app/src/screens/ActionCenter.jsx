@@ -197,7 +197,7 @@ export default function ActionCenter({ onNavigate, onSelectProduct }) {
         </div>
       )}
 
-      {!loading && allTasks.length === 0 && (
+      {!loading && !error && allTasks.length === 0 && (
         <div className="empty-state" style={{ padding: '64px 24px' }}>
           <div style={{
             width: 56, height: 56, borderRadius: '50%', background: 'var(--success-dim)',
