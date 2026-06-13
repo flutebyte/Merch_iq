@@ -94,4 +94,17 @@ router.get('/order-sales', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /analytics/orders/:platformOrderId — full order detail
+router.get('/orders/:platformOrderId', async (req, res, next) => {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
+    const order = await prisma.platformOrder.findFirst({
+      where: { brandId: req.brandId, platformOrderId: req.params.platformOrderId },
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.json(order);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -183,9 +183,104 @@ const PERIOD_OPTIONS = [
   { label: '90d', value: 90 },
 ];
 
+function OrderDetailPanel({ platformOrderId, onClose }) {
+  const { data: order, loading, error } = useFetch(
+    platformOrderId ? `/analytics/orders/${encodeURIComponent(platformOrderId)}` : null
+  );
+
+  const statusColor = {
+    delivered: 'var(--success)', refunded: 'var(--danger)',
+    cancelled: 'var(--warning)', shipped: 'var(--accent)',
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 400, animation: 'fadeIn 0.15s ease' }}
+      />
+      {/* Panel */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 380,
+        background: 'var(--surface)', borderLeft: '1px solid var(--border)',
+        zIndex: 401, display: 'flex', flexDirection: 'column',
+        animation: 'slideInRight 0.2s ease',
+        boxShadow: 'var(--shadow-lg)',
+      }}>
+        <style>{`@keyframes slideInRight { from { transform: translateX(100%) } to { transform: translateX(0) } }`}</style>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Order Detail</div>
+            {order && <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 2 }}>{order.platformOrderId}</div>}
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+          {loading && <div style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', paddingTop: 40 }}>Loading…</div>}
+          {error && <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', paddingTop: 40 }}>Order not found</div>}
+          {order && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Status + platform */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 100, background: `${statusColor[order.status] || 'var(--accent)'}22`, color: statusColor[order.status] || 'var(--accent)', fontWeight: 600 }}>
+                  {order.status}
+                </span>
+                <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 100, background: 'var(--surface2)', color: 'var(--text-secondary)', fontWeight: 500, textTransform: 'capitalize' }}>
+                  {order.platform}
+                </span>
+              </div>
+
+              {/* Key numbers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {[
+                  { label: 'Gross Revenue', value: order.grossAmount ? `₹${parseFloat(order.grossAmount).toLocaleString('en-IN')}` : '—' },
+                  { label: 'Net Revenue', value: order.netRevenue ? `₹${parseFloat(order.netRevenue).toLocaleString('en-IN')}` : '—' },
+                  { label: 'Order Date', value: order.orderDate ? new Date(order.orderDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—' },
+                  { label: 'Ship to', value: [order.customerCity, order.customerState].filter(Boolean).join(', ') || '—' },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Items */}
+              {Array.isArray(order.items) && order.items.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 8 }}>Items</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {order.items.map((item, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--surface2)', borderRadius: 'var(--radius)', fontSize: 13 }}>
+                        <div>
+                          <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.name || item.sku || 'Item'}</div>
+                          {item.sku && item.name && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{item.sku}</div>}
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>×{item.qty || 1}</div>
+                          {item.unitPrice && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>₹{parseFloat(item.unitPrice).toLocaleString('en-IN')} each</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function SalesScreen({ onNavigate }) {
-  const [period, setPeriod]       = useState(30);
-  const [showModal, setShowModal] = useState(false);
+  const [period, setPeriod]           = useState(30);
+  const [showModal, setShowModal]     = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
 
   const { data: productsData } = useFetch('/products');
   const { data, loading, error, refetch } = useFetch(`/analytics/order-sales?days=${period}`);
@@ -287,9 +382,10 @@ export default function SalesScreen({ onNavigate }) {
                   const platformColor = PLATFORM_COLOR[o.platform] || 'var(--accent)';
                   return (
                     <tr key={o.platformOrderId || i}
-                      style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
+                      style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.1s', cursor: 'pointer' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      onClick={() => o.platformOrderId && setSelectedOrderId(o.platformOrderId)}
                     >
                       <td style={{ padding: '10px 14px', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                         {(o.platformOrderId || '').slice(0, 14)}
@@ -330,6 +426,13 @@ export default function SalesScreen({ onNavigate }) {
           products={products}
           onClose={() => setShowModal(false)}
           onSuccess={() => { setShowModal(false); refetch(); }}
+        />
+      )}
+
+      {selectedOrderId && (
+        <OrderDetailPanel
+          platformOrderId={selectedOrderId}
+          onClose={() => setSelectedOrderId(null)}
         />
       )}
     </div>
