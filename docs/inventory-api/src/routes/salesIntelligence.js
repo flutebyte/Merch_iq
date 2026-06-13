@@ -162,6 +162,49 @@ router.get('/dead-stock', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /sales-intelligence/low-stock?threshold=5
+router.get('/low-stock', async (req, res, next) => {
+  try {
+    const threshold = Math.max(1, parseInt(req.query.threshold, 10) || 5);
+    const cacheKey = `low-stock-${req.brandId}-${threshold}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    const products = await prisma.product.findMany({
+      where: { brandId: req.brandId },
+      select: {
+        id: true, name: true, sku: true, category: true, sellingPrice: true,
+        stockLots: {
+          where: { inventoryStatus: 'main_stock', quantityCertainty: { not: 'unknown' } },
+          select: { quantity: true, confidenceState: true },
+        },
+      },
+      take: 200,
+    });
+
+    const items = [];
+    for (const p of products) {
+      const totalQty = p.stockLots.reduce((sum, l) => sum + (l.quantity || 0), 0);
+      if (p.stockLots.length > 0 && totalQty < threshold) {
+        items.push({
+          productId: p.id,
+          productName: p.name || 'Unnamed product',
+          sku: p.sku,
+          category: p.category,
+          quantity: totalQty,
+          sellingPrice: p.sellingPrice ? parseFloat(p.sellingPrice) : null,
+        });
+      }
+    }
+
+    items.sort((a, b) => a.quantity - b.quantity);
+
+    const response = { threshold, items, summary: `${items.length} products with fewer than ${threshold} units` };
+    setCached(cacheKey, response);
+    res.json(response);
+  } catch (err) { next(err); }
+});
+
 // GET /sales-intelligence/revenue-trend?weeks=12
 router.get('/revenue-trend', async (req, res, next) => {
   try {
