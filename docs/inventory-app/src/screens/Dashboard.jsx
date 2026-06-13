@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TrendingDown, AlertTriangle, Zap, ClipboardList, ArrowRight, TrendingUp, Package, Eye, Activity } from 'lucide-react';
 import { useFetch } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -89,6 +89,8 @@ export default function Dashboard({ onNavigate }) {
   const { data: actionData,  loading: actionsLoading  } = useFetch('/action-queue');
   const { data: confidenceData } = useFetch(brand?.id ? `/brands/${brand.id}/confidence` : null);
   const { data: revenueData } = useFetch('/analytics/revenue?days=7');
+  const { data: lowStockData } = useFetch('/sales-intelligence/low-stock?threshold=5');
+  const [alertsDismissed, setAlertsDismissed] = useState(false);
 
   const products     = (rawProducts || []).map(mapProduct);
   const actionTasks  = actionData?.tasks || [];
@@ -215,6 +217,42 @@ export default function Dashboard({ onNavigate }) {
           </div>
           <button className="btn btn-primary btn-sm" onClick={() => onNavigate('actions')}>
             Review opportunities <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Low-stock alert strip */}
+      {!alertsDismissed && lowStockData?.items?.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14,
+          padding: '12px 18px', marginBottom: 16,
+          background: 'var(--warning-dim)',
+          border: '1px solid rgba(251,191,36,0.3)',
+          borderRadius: 'var(--radius-lg)',
+          animation: 'fadeIn 0.3s ease',
+        }}>
+          <AlertTriangle size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+              {lowStockData.items.length} product{lowStockData.items.length !== 1 ? 's' : ''} running low
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
+              {lowStockData.items.slice(0, 2).map(i => i.productName || i.sku).join(', ')}
+              {lowStockData.items.length > 2 ? ` +${lowStockData.items.length - 2} more` : ''}
+            </span>
+          </div>
+          <button
+            onClick={() => onNavigate('inventory')}
+            style={{ fontSize: 12, fontWeight: 600, color: 'var(--warning)', background: 'transparent', border: 'none', cursor: 'pointer', flexShrink: 0 }}
+          >
+            View →
+          </button>
+          <button
+            onClick={() => setAlertsDismissed(true)}
+            aria-label="Dismiss low stock alert"
+            style={{ fontSize: 16, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+          >
+            ×
           </button>
         </div>
       )}
