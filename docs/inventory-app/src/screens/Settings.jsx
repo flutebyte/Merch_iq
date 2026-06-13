@@ -1015,20 +1015,23 @@ function IntegrationsPane() {
         const isCsvPlatform = p.id === 'meesho' || p.id === 'ajio';
         const syncLabel = p.id === 'tally' ? 'Export XML' : p.id === 'meesho' ? null : isCsvPlatform ? 'View Stats' : p.id === 'whatsapp' ? 'Export Catalog' : 'Sync Now';
 
+        const isError = p.status === 'error';
         return (
           <div key={p.id} style={{
             padding: '14px 18px', background: 'var(--surface)',
-            border: `1px solid ${p.connected ? 'rgba(93,190,138,0.3)' : 'var(--border)'}`,
+            border: `1px solid ${isError ? 'rgba(248,113,113,0.3)' : p.connected ? 'rgba(93,190,138,0.3)' : 'var(--border)'}`,
             borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)',
             transition: 'border-color 0.2s',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.connected ? 'var(--success)' : color, flexShrink: 0 }} />
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: isError ? 'var(--danger)' : p.connected ? 'var(--success)' : color, flexShrink: 0 }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: flashMsg ? (flashMsg.ok ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {flashMsg?.text || (p.connected && p.lastSyncAt
+                  <div style={{ fontSize: 12, color: flashMsg ? (flashMsg.ok ? 'var(--success)' : 'var(--danger)') : isError ? 'var(--danger)' : 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {flashMsg?.text || (isError
+                      ? (p.metadata?.lastSyncError ? `Sync failed: ${p.metadata.lastSyncError}` : 'Last sync failed — will retry in 1h')
+                      : p.connected && p.lastSyncAt
                       ? `Last synced ${new Date(p.lastSyncAt).toLocaleString()}`
                       : p.connected ? 'Connected · ready to sync'
                       : p.desc)}
