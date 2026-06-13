@@ -1,306 +1,448 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Upload, Camera, BookOpen, Sparkles, Link, Package, TrendingUp, Zap, BarChart2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Upload, Camera, BookOpen, Sparkles, Link, Check } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrand } from '../contexts/BrandContext';
+import { useApiRequest } from '../hooks/useApi';
 
 const setupOptions = [
   {
     id: 'organized',
     icon: BookOpen,
-    label: 'I have a file ready',
-    sub: 'Import a CSV or Excel sheet',
+    label: 'I have a spreadsheet ready',
+    sub: 'Import CSV or Excel — takes under a minute',
     action: 'import',
-    color: 'var(--success)',
   },
   {
     id: 'partial',
     icon: Sparkles,
-    label: 'I have partial data',
-    sub: 'Some records, gaps are okay',
+    label: 'I have partial records',
+    sub: 'Some data is fine, we fill the gaps as you sell',
     action: 'import',
-    color: 'var(--accent)',
   },
   {
     id: 'photos',
     icon: Camera,
-    label: 'I\'ll photograph products',
-    sub: 'Build inventory from photos, one by one',
+    label: "I'll photograph my stock",
+    sub: 'Point, shoot, done — build inventory with your phone',
     action: 'photo',
-    color: 'var(--warning)',
   },
   {
     id: 'scratch',
     icon: Upload,
-    label: 'Starting completely fresh',
-    sub: 'Enter inventory manually as you go',
+    label: 'Starting from zero',
+    sub: 'Add products manually as you go',
     action: 'photo',
-    color: 'var(--info)',
   },
   {
     id: 'erp',
     icon: Link,
-    label: 'I use an ERP or accounting system',
-    sub: 'Connect Tally, Zoho, or export from ERP',
+    label: 'I use Tally or an ERP',
+    sub: 'Connect Tally, Zoho, or export from any ERP',
     action: 'erp',
-    color: 'var(--text-secondary)',
   },
 ];
 
-const features = [
-  { icon: Package,     label: 'Smart inventory tracking',  sub: 'Always know what you have'         },
-  { icon: TrendingUp,  label: 'Dead stock detection',      sub: 'Find slow-moving items early'      },
-  { icon: BarChart2,   label: 'Sales intelligence',        sub: 'Know what sells and what doesn\'t' },
-  { icon: ShieldCheck, label: 'Confidence scoring',        sub: 'Trust your numbers again'          },
+const proofPoints = [
+  'Know exactly what you have — in real time',
+  'Catch dead stock before it kills your cash flow',
+  'See which products sell and which ones sit',
+  'Built for Indian sellers — Meesho, Flipkart, Amazon',
 ];
+
+const MOBILE_STYLE = `
+  @media (max-width: 768px) {
+    .onboarding-left {
+      width: 100% !important;
+      min-height: auto !important;
+      border-right: none !important;
+      border-bottom: 1px solid var(--border);
+      padding: 32px 24px !important;
+    }
+    .onboarding-right {
+      min-height: auto !important;
+      padding: 32px 24px !important;
+    }
+  }
+`;
 
 export default function Onboarding({ onComplete }) {
   const { user }  = useAuth();
-  const { brand } = useBrand();
+  const { brand, setBrand } = useBrand();
+  const { patch, loading: saving } = useApiRequest();
 
-  const [step, setStep]         = useState('welcome'); // 'welcome' | 'setup'
-  const [selected, setSelected] = useState(null);
-  const [hovering, setHovering] = useState(null);
-  const [featIdx, setFeatIdx]   = useState(0);
+  // 'brand' → 'setup'
+  const [step, setStep]           = useState('brand');
+  const [brandInput, setBrandInput] = useState('');
+  const [selected, setSelected]   = useState(null);
+  const [hovering, setHovering]   = useState(null);
 
-  // Cycle the feature highlight every 2.5s on the welcome screen
+  // Skip brand step if brand already has a custom name
   useEffect(() => {
-    if (step !== 'welcome') return;
-    const t = setInterval(() => setFeatIdx(i => (i + 1) % features.length), 2500);
-    return () => clearInterval(t);
-  }, [step]);
+    if (brand?.name && step === 'brand') {
+      setStep('setup');
+    }
+  }, [brand, step]);
 
-  const displayName = brand?.name
+  const displayName = brand?.name || brandInput
     || user?.email?.split('@')[0]?.replace(/[._-]/g, ' ')?.replace(/\b\w/g, c => c.toUpperCase())
-    || 'there';
+    || null;
 
   const chosen = setupOptions.find(o => o.id === selected);
 
-  // ── Welcome screen ─────────────────────────────────────────────────────────
-  if (step === 'welcome') {
-    return (
+  async function handleBrandContinue() {
+    const trimmed = brandInput.trim();
+    if (trimmed && brand?.id) {
+      try {
+        const updated = await patch(`/brands/${brand.id}`, { name: trimmed });
+        if (updated) setBrand(updated);
+      } catch {
+        // Non-blocking — user can rename later in Settings
+      }
+    }
+    setStep('setup');
+  }
+
+  // ── Shared left panel ──────────────────────────────────────────────────────
+  const leftPanel = (
+    <div className="onboarding-left" style={{
+      width: '45%',
+      minHeight: '100vh',
+      background: 'var(--surface)',
+      borderRight: '1px solid var(--border)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+      padding: '48px 52px',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Subtle background shape */}
       <div style={{
-        minHeight: '100vh',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--bg)', padding: '24px',
-        backgroundImage: [
-          'radial-gradient(ellipse at 15% 40%, rgba(99,102,241,0.08) 0%, transparent 55%)',
-          'radial-gradient(ellipse at 85% 20%, rgba(52,211,153,0.05) 0%, transparent 50%)',
-          'radial-gradient(ellipse at 60% 85%, rgba(251,191,36,0.04) 0%, transparent 50%)',
-        ].join(', '),
-      }}>
-        <div style={{ width: '100%', maxWidth: 620, animation: 'fadeIn 0.6s ease' }}>
+        position: 'absolute',
+        bottom: -120,
+        left: -80,
+        width: 400,
+        height: 400,
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }} />
 
-          {/* Logo mark */}
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 40 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 16,
-              background: 'linear-gradient(135deg, var(--accent) 0%, #8B5CF6 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 40px rgba(99,102,241,0.35), 0 0 0 1px rgba(99,102,241,0.2)',
-            }}>
-              <Zap size={26} color="#fff" fill="#fff" />
-            </div>
-          </div>
-
-          {/* Greeting */}
-          <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 14px',
-              background: 'var(--success-dim)', border: '1px solid rgba(52,211,153,0.2)',
-              borderRadius: 100, marginBottom: 20,
-            }}>
-              <span style={{ fontSize: 14 }}>👋</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--success)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Welcome aboard
-              </span>
-            </div>
-
-            <h1 style={{
-              fontFamily: 'var(--font-display)', fontSize: 'clamp(36px, 6vw, 52px)',
-              lineHeight: 1.1, color: 'var(--text-primary)', marginBottom: 16, letterSpacing: '-0.02em',
-            }}>
-              Hey {displayName},<br />
-              <span style={{
-                background: 'linear-gradient(135deg, var(--accent) 0%, #8B5CF6 60%, #EC4899 100%)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-              }}>
-                great to have you.
-              </span>
-            </h1>
-
-            <p style={{
-              color: 'var(--text-secondary)', fontSize: 16, lineHeight: 1.7,
-              maxWidth: 480, margin: '0 auto',
-            }}>
-              Your inventory command center is ready. We'll help you go from chaos to clarity — 
-              no perfect data needed, no steep learning curve.
-            </p>
-          </div>
-
-          {/* Feature cards */}
+      {/* Top — wordmark */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 64 }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 44,
+            width: 32, height: 32, borderRadius: 8,
+            background: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            {features.map((f, i) => {
-              const Icon = f.icon;
-              const isActive = featIdx === i;
-              return (
-                <div
-                  key={f.label}
-                  style={{
-                    padding: '16px 18px', borderRadius: 'var(--radius-lg)',
-                    background: isActive ? 'var(--surface2)' : 'var(--surface)',
-                    border: `1px solid ${isActive ? 'var(--accent-border)' : 'var(--border)'}`,
-                    transition: 'all 0.4s ease',
-                    boxShadow: isActive ? '0 0 0 1px var(--accent-border), 0 4px 20px rgba(99,102,241,0.08)' : 'none',
-                    display: 'flex', alignItems: 'flex-start', gap: 12,
-                  }}
-                >
-                  <div style={{
-                    width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                    background: isActive ? 'var(--accent-dim)' : 'var(--surface2)',
-                    border: `1px solid ${isActive ? 'var(--accent-border)' : 'var(--border)'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.4s ease',
-                  }}>
-                    <Icon size={15} color={isActive ? 'var(--accent)' : 'var(--text-muted)'} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)', marginBottom: 2, transition: 'color 0.3s' }}>
-                      {f.label}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>{f.sub}</div>
-                  </div>
-                </div>
-              );
-            })}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="2" width="5" height="5" rx="1" fill="white" />
+              <rect x="9" y="2" width="5" height="5" rx="1" fill="white" fillOpacity="0.5" />
+              <rect x="2" y="9" width="5" height="5" rx="1" fill="white" fillOpacity="0.5" />
+              <rect x="9" y="9" width="5" height="5" rx="1" fill="white" />
+            </svg>
           </div>
+          <span style={{
+            fontSize: 15, fontWeight: 700, color: 'var(--text-primary)',
+            letterSpacing: '-0.01em',
+          }}>
+            Inventory OS
+          </span>
+        </div>
 
-          {/* CTA */}
-          <button
-            className="btn btn-primary"
-            onClick={() => setStep('setup')}
-            style={{
-              width: '100%', justifyContent: 'center', padding: '15px', fontSize: 15,
-              borderRadius: 'var(--radius-lg)',
-              background: 'linear-gradient(135deg, var(--accent) 0%, #7C3AED 100%)',
-              border: 'none',
-              boxShadow: '0 4px 24px rgba(99,102,241,0.35)',
-            }}
-          >
-            Let's set up your inventory <ArrowRight size={16} />
-          </button>
-
-          <p style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-            Takes under 2 minutes &nbsp;·&nbsp; No credit card required
+        {/* Headline */}
+        <div style={{ marginBottom: 40 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--accent)',
+            letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16,
+          }}>
+            {displayName ? `Welcome, ${displayName}` : 'Built for sellers'}
+          </div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 38,
+            lineHeight: 1.15,
+            letterSpacing: '-0.03em',
+            color: 'var(--text-primary)',
+            fontWeight: 700,
+            marginBottom: 20,
+          }}>
+            Your inventory,<br />finally under<br />control.
+          </h1>
+          <p style={{
+            fontSize: 15,
+            color: 'var(--text-secondary)',
+            lineHeight: 1.65,
+            maxWidth: 340,
+          }}>
+            Stop guessing what you have in stock.
+            Start making decisions backed by real numbers.
           </p>
+        </div>
+
+        {/* Proof points */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {proofPoints.map((point, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 12,
+                animation: `fadeIn 0.4s ease ${i * 0.08 + 0.2}s both`,
+              }}
+            >
+              <div style={{
+                width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                background: 'var(--accent-dim)',
+                border: '1px solid var(--accent-border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Check size={10} color="var(--accent)" strokeWidth={2.5} />
+              </div>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {point}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom — social proof */}
+      <div style={{
+        paddingTop: 32,
+        borderTop: '1px solid var(--border)',
+      }}>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          "Finally stopped losing money to dead stock. The confidence scoring alone saved us ₹2L in one quarter."
+        </p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, fontWeight: 500 }}>
+          — Priya M., boutique owner, Surat
+        </p>
+      </div>
+    </div>
+  );
+
+  // ── Brand name step ────────────────────────────────────────────────────────
+  if (step === 'brand') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexWrap: 'wrap', background: 'var(--bg)' }}>
+        <style>{MOBILE_STYLE}</style>
+        {leftPanel}
+
+        <div className="onboarding-right" style={{
+          flex: 1,
+          minWidth: 300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '48px 52px',
+          animation: 'fadeIn 0.5s ease',
+        }}>
+          <div style={{ width: '100%', maxWidth: 420 }}>
+            <div style={{ marginBottom: 40 }}>
+              <h2 style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 26,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                letterSpacing: '-0.02em',
+                marginBottom: 8,
+              }}>
+                What's your brand called?
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                We'll use this across your dashboard, reports, and exports.
+              </p>
+            </div>
+
+            <input
+              type="text"
+              value={brandInput}
+              onChange={e => setBrandInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleBrandContinue()}
+              placeholder="e.g. Cherish, Studio Meera, The Label Co."
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '13px 16px',
+                background: 'var(--surface)',
+                border: '1px solid var(--border2)',
+                borderRadius: 'var(--radius-lg)',
+                color: 'var(--text-primary)',
+                fontSize: 15,
+                outline: 'none',
+                marginBottom: 16,
+                boxSizing: 'border-box',
+                transition: 'border-color 0.12s ease',
+              }}
+              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+              onBlur={e => { e.target.style.borderColor = 'var(--border2)'; }}
+            />
+
+            <button
+              className="btn btn-primary"
+              onClick={handleBrandContinue}
+              disabled={saving}
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                padding: '13px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 'var(--radius-lg)',
+                letterSpacing: '-0.01em',
+                marginBottom: 12,
+              }}
+            >
+              {saving ? 'Saving…' : 'Continue'} {!saving && <ArrowRight size={15} />}
+            </button>
+
+            <button
+              onClick={() => setStep('setup')}
+              style={{
+                width: '100%',
+                padding: '10px 20px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-muted)',
+                fontSize: 13,
+                cursor: 'pointer',
+                textAlign: 'center',
+              }}
+            >
+              Skip for now
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // ── Setup screen ───────────────────────────────────────────────────────────
-  return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--bg)', padding: '24px',
-      backgroundImage: 'radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.06) 0%, transparent 60%)',
-    }}>
-      <div style={{ width: '100%', maxWidth: 580, animation: 'slideUp 0.4s ease' }}>
+  // ── Setup options step ─────────────────────────────────────────────────────
+  if (step === 'setup') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexWrap: 'wrap', background: 'var(--bg)' }}>
+        <style>{MOBILE_STYLE}</style>
+        {leftPanel}
 
-        {/* Back + step indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
-          <button
-            onClick={() => setStep('welcome')}
-            style={{ color: 'var(--text-muted)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-          >
-            ← Back
-          </button>
-          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-            <div style={{ width: 20, height: 3, borderRadius: 2, background: 'var(--accent)' }} />
-            <div style={{ width: 20, height: 3, borderRadius: 2, background: 'var(--accent)' }} />
+        <div className="onboarding-right" style={{
+          flex: 1,
+          minWidth: 300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '48px 52px',
+          animation: 'fadeIn 0.5s ease',
+        }}>
+          <div style={{ width: '100%', maxWidth: 420 }}>
+
+            <div style={{ marginBottom: 40 }}>
+              <h2 style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 26,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                letterSpacing: '-0.02em',
+                marginBottom: 8,
+              }}>
+                Let's get you set up
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                How would you like to start? You can always change this later.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 32 }}>
+              {setupOptions.map((opt, i) => {
+                const Icon = opt.icon;
+                const isSelected = selected === opt.id;
+                const isHovered  = hovering === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSelected(opt.id)}
+                    onMouseEnter={() => setHovering(opt.id)}
+                    onMouseLeave={() => setHovering(null)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      padding: '14px 16px',
+                      background: isSelected ? 'var(--accent-dim)' : isHovered ? 'var(--surface2)' : 'var(--surface)',
+                      border: `1px solid ${isSelected ? 'var(--accent-border)' : isHovered ? 'var(--border2)' : 'var(--border)'}`,
+                      borderRadius: 'var(--radius-lg)',
+                      cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.12s ease',
+                      animation: `fadeIn 0.3s ease ${i * 0.05}s both`,
+                      outline: 'none',
+                      width: '100%',
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                      background: isSelected ? 'rgba(99,102,241,0.15)' : 'var(--surface2)',
+                      border: `1px solid ${isSelected ? 'var(--accent-border)' : 'var(--border)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.12s ease',
+                    }}>
+                      <Icon size={15} color={isSelected ? 'var(--accent)' : 'var(--text-muted)'} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 600,
+                        color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
+                        marginBottom: 2, transition: 'color 0.12s',
+                      }}>
+                        {opt.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                        {opt.sub}
+                      </div>
+                    </div>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border2)'}`,
+                      background: isSelected ? 'var(--accent)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.12s ease',
+                    }}>
+                      {isSelected && (
+                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff' }} />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              className="btn btn-primary"
+              disabled={!selected}
+              onClick={() => chosen && onComplete(chosen.action)}
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                padding: '13px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                borderRadius: 'var(--radius-lg)',
+                opacity: selected ? 1 : 0.4,
+                transition: 'opacity 0.15s ease',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              Continue <ArrowRight size={15} />
+            </button>
+
+            <p style={{
+              textAlign: 'center', marginTop: 16,
+              fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
+            }}>
+              No credit card · Free to start · Add more data any time
+            </p>
           </div>
         </div>
-
-        {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 30, lineHeight: 1.2, color: 'var(--text-primary)', marginBottom: 8 }}>
-            Where is your inventory today?
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-            We work with whatever you have — no perfect data needed.
-          </p>
-        </div>
-
-        {/* Options */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 28 }}>
-          {setupOptions.map((opt, i) => {
-            const Icon = opt.icon;
-            const isSelected = selected === opt.id;
-            const isHovered  = hovering === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => setSelected(opt.id)}
-                onMouseEnter={() => setHovering(opt.id)}
-                onMouseLeave={() => setHovering(null)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px',
-                  background: isSelected ? 'var(--surface2)' : (isHovered ? 'var(--surface)' : 'transparent'),
-                  border: `1px solid ${isSelected ? opt.color : (isHovered ? 'var(--border2)' : 'var(--border)')}`,
-                  borderRadius: 'var(--radius-lg)', cursor: 'pointer', textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                  animation: `fadeIn 0.3s ease ${i * 0.06}s both`,
-                  boxShadow: isSelected ? `0 0 0 1px ${opt.color}22, inset 0 0 24px ${opt.color}06` : 'none',
-                }}
-              >
-                <div style={{
-                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-                  background: isSelected ? `${opt.color}18` : 'var(--surface2)',
-                  border: `1px solid ${isSelected ? opt.color + '40' : 'var(--border)'}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.15s ease',
-                }}>
-                  <Icon size={17} color={isSelected ? opt.color : 'var(--text-muted)'} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)', marginBottom: 2 }}>
-                    {opt.label}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{opt.sub}</div>
-                </div>
-                <div style={{
-                  width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-                  border: `2px solid ${isSelected ? opt.color : 'var(--border2)'}`,
-                  background: isSelected ? opt.color : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.15s ease',
-                }}>
-                  {isSelected && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#0D0D0B' }} />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* CTA */}
-        <button
-          className="btn btn-primary"
-          disabled={!selected}
-          onClick={() => chosen && onComplete(chosen.action)}
-          style={{
-            width: '100%', justifyContent: 'center', padding: '14px', fontSize: 15,
-            opacity: selected ? 1 : 0.35, transition: 'opacity 0.2s ease',
-            borderRadius: 'var(--radius-lg)',
-          }}
-        >
-          Continue <ArrowRight size={16} />
-        </button>
-
-        <p style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-          You can always add more data later
-        </p>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return null;
 }
