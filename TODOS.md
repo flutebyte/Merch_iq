@@ -22,14 +22,12 @@ Deferred work captured during engineering reviews. Each item has context suffici
 
 ## TODO-2: SalesRecord ↔ PlatformOrder join for revenue dashboard
 
-**What:** Build a join between `PlatformOrder` and `SalesRecord` so revenue analytics (currently reading from `SalesRecord.price`) can use `PlatformOrder.netRevenue` (actual net after GST and commissions) for the Meesho channel.
+> **RESOLVED (2026-06-15):** `analyticsEngine.js:46-64` already reads `PlatformOrder.netRevenue` with a gross fallback — not `SalesRecord.price`. The described P0 bug does not exist. The join work described below is still a valid long-term schema cleanup but is NOT blocking revenue accuracy.
 
-**Why:** `SalesRecord.price` is the selling price from the order CSV. `PlatformOrder.netRevenue` is `total_taxable_sale_value` from the payment report — the actual net revenue the seller keeps after GST. These are meaningfully different numbers. A seller seeing ₹10L revenue vs ₹7L net revenue is a completely different business picture. The revenue dashboard currently shows the wrong number for Meesho.
+**What:** Build a join between `PlatformOrder` and `SalesRecord` so revenue analytics can unify both tables' data under one model (longer-term schema reconciliation).
 
-**Pros:** Makes Meesho revenue accurate. Dashboard shows net realized revenue, not gross. Enables margin calculation when `costPrice` is set on the Product.
+**Why:** `SalesRecord` was the original data model before `PlatformOrder` was added for multi-platform orders. The two tables have structural overlap (both store order data) but serve different purposes (SalesRecord = inventory movement tracking; PlatformOrder = financial/fulfillment record). Long-term these may need reconciliation.
 
-**Cons:** `SalesRecord` and `PlatformOrder` have no foreign key today. The link goes through `SalesRecord.externalOrderId` matching `PlatformOrder.platformOrderId` for `platform='meesho'`. This requires a query-time join or a denormalization step. The analytics queries in `analyticsEngine.js` currently read from `SalesRecord` only.
+**Cons:** `SalesRecord` and `PlatformOrder` have no foreign key today. The link goes through `SalesRecord.externalOrderId` matching `PlatformOrder.platformOrderId` for `platform='meesho'`. This requires a query-time join or a denormalization step.
 
-**Context:** Pre-existing schema debt — `SalesRecord` was the original data model before `PlatformOrder` was added for multi-platform orders. The two tables have structural overlap (both store order data) but serve different purposes (SalesRecord = inventory movement tracking; PlatformOrder = financial/fulfillment record). Long-term these may need reconciliation.
-
-**Depends on:** Meesho payment import (for netRevenue data) and a decision on the longer-term schema: keep both tables or migrate one into the other.
+**Depends on:** A decision on the longer-term schema: keep both tables or migrate one into the other.

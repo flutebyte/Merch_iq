@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Palette, Bell, User, Shield, Sliders, Download, Plug, Info,
   Sun, Moon, Monitor, Check, AlertTriangle, Eye, EyeOff, Loader,
@@ -646,24 +646,123 @@ function MeeshoReportStatus({ metadata }) {
   );
 }
 
+// Column signatures (mirrors server-side csvParser.js PLATFORM_SIGNATURES)
+const CSV_PLATFORM_SIGNATURES = {
+  meesho: ['Sub Order No', 'Reason for Credit Entry', 'SKU', 'Supplier Discounted Price (Incl GST and Commision)'],
+  meesho_payment: ['sub_order_num', 'gstin', 'gst_rate', 'total_invoice_value'],
+  ajio: ['Order Reference ID', 'Item Code', 'Selling Price INR'],
+  citymall: ['Order ID', 'Product Name', 'Selling Price', 'Order Status'],
+};
+
+// Display column specs: labels shown in preview, keys are actual CSV column names
+const PLATFORM_PREVIEW_COLUMNS = {
+  meesho:         { labels: ['Order Date', 'Status', 'Product', 'Amount'],    keys: ['Order Date', 'Reason for Credit Entry', 'Product Name', 'Supplier Discounted Price (Incl GST and Commision)'] },
+  meesho_payment: { labels: ['Order Date', 'Type', 'Order No', 'Amount'],     keys: ['order_date', 'transaction_type', 'sub_order_num', 'total_invoice_value'] },
+  ajio:           { labels: ['Order Date', 'Status', 'Product', 'Sale Price'], keys: ['Order Date', 'Order Status', 'Product Name', 'Selling Price INR'] },
+  citymall:       { labels: ['Order Date', 'Status', 'Item', 'Price'],        keys: ['Order Date', 'Order Status', 'Product Name', 'Selling Price'] },
+};
+
+// RFC 4180-aware CSV head parser with BOM stripping
+function parseCsvHead(text, maxRows = 5) {
+  const stripped = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const lines = stripped.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 1) return { headers: [], rows: [] };
+
+  function parseRow(line) {
+    const fields = [];
+    let i = 0;
+    while (i <= line.length) {
+      if (i === line.length) { fields.push(''); break; }
+      if (line[i] === '"') {
+        let j = i + 1, value = '';
+        while (j < line.length) {
+          if (line[j] === '"' && line[j + 1] === '"') { value += '"'; j += 2; }
+          else if (line[j] === '"') { j++; break; }
+          else { value += line[j++]; }
+        }
+        fields.push(value.trim());
+        i = j;
+        if (i < line.length && line[i] === ',') i++;
+        else break;
+      } else {
+        const end = line.indexOf(',', i);
+        if (end === -1) { fields.push(line.slice(i).trim()); break; }
+        fields.push(line.slice(i, end).trim());
+        i = end + 1;
+      }
+    }
+    return fields;
+  }
+
+  const headers = parseRow(lines[0]);
+  const rows = lines.slice(1, 1 + maxRows).map(parseRow);
+  return { headers, rows };
+}
+
+function detectPlatformFromHeaders(headers) {
+  for (const [p, required] of Object.entries(CSV_PLATFORM_SIGNATURES)) {
+    if (required.every(c => headers.includes(c))) return p;
+  }
+  return null;
+}
+
 function CsvUploadZone({ platformId, onUploadDone }) {
   const { token } = useAuth();
   const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState(null);
+  // state: idle | preview_loading | preview_ok | preview_empty | preview_error | xlsx_confirm | uploading | result_ok | result_error
+  const [uploadState, setUploadState] = useState('idle');
+  const [preview, setPreview] = useState(null); // { headers, rows, platform }
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [resultText, setResultText] = useState('');
+  const timerRef = useRef(null);
   const BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
-  const handleFile = async (file) => {
-    if (!file || !file.name.match(/\.(csv|xlsx|xls)$/i)) {
-      setResult({ ok: false, text: 'Please upload a .csv, .xlsx, or .xls file' });
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const scheduleReset = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => { setUploadState('idle'); setResultText(''); }, 6000);
+  };
+
+  const handleFileSelected = (file) => {
+    if (!file) return;
+    if (!file.name.match(/\.(csv|xlsx|xls|txt)$/i)) {
+      setResultText('Please upload a CSV or Excel file');
+      setUploadState('result_error');
+      scheduleReset();
       return;
     }
-    setUploading(true);
-    setResult(null);
+    setSelectedFile(file);
+    if (file.name.match(/\.(xlsx|xls)$/i)) {
+      setUploadState('xlsx_confirm');
+      return;
+    }
+    setUploadState('preview_loading');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const { headers, rows } = parseCsvHead(e.target.result, 5);
+        const platform = detectPlatformFromHeaders(headers);
+        if (rows.length === 0) { setPreview(null); setUploadState('preview_empty'); return; }
+        setPreview({ headers, rows, platform });
+        setUploadState('preview_ok');
+      } catch {
+        setResultText('Could not read the file. Try saving it as CSV first.');
+        setUploadState('preview_error');
+      }
+    };
+    reader.onerror = () => { setResultText('Could not read the file.'); setUploadState('preview_error'); };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!selectedFile || uploadState === 'uploading') return;
+    setUploadState('uploading');
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`${BASE}/integrations/${platformId}/import`, {
+      formData.append('file', selectedFile);
+      const res = await fetch(`${BASE}/integrations/${encodeURIComponent(platformId)}/import`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -671,50 +770,151 @@ function CsvUploadZone({ platformId, onUploadDone }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       const label = data.reportType === 'payments' ? 'payment records' : 'order records';
-      setResult({ ok: true, text: `Imported ${data.inserted} ${label} (${data.skipped} duplicates skipped)` });
+      setResultText(`${data.inserted} ${label} imported (${data.skipped} already in your account)`);
+      setUploadState('result_ok');
       window.dispatchEvent(new Event('inv:mutation'));
       if (onUploadDone) onUploadDone();
     } catch (err) {
-      setResult({ ok: false, text: err.message });
+      setResultText(err.message);
+      setUploadState('result_error');
     } finally {
-      setUploading(false);
+      scheduleReset();
     }
-    setTimeout(() => setResult(null), 6000);
   };
+
+  const handleCancel = () => { setUploadState('idle'); setSelectedFile(null); setPreview(null); };
 
   const exportHint = platformId === 'meesho'
     ? 'Drop any Meesho report — Payment Statement or GSTR Tax Invoice'
-    : 'Ajio Seller Portal → Reports → Order Report';
+    : platformId === 'ajio' ? 'Ajio Seller Portal → Reports → Order Report'
+    : 'Drop your order export CSV here';
+
+  const renderPreview = () => {
+    if (!preview) return null;
+    const spec = preview.platform ? PLATFORM_PREVIEW_COLUMNS[preview.platform] : null;
+    const labels = spec ? spec.labels : preview.headers.slice(0, 4);
+    const indices = spec ? spec.keys.map(k => preview.headers.indexOf(k)) : [0, 1, 2, 3];
+    const cell = (row, i) => (indices[i] >= 0 ? row[indices[i]] : null) || '—';
+    const platformName = preview.platform === 'meesho_payment' ? 'Meesho GSTR' : preview.platform === 'meesho' ? 'Meesho' : preview.platform === 'ajio' ? 'Ajio' : preview.platform === 'citymall' ? 'CityMall' : null;
+
+    return (
+      <div style={{ marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+          {platformName
+            ? `Looks good — showing the first ${preview.rows.length} orders from your ${platformName} report`
+            : `Showing first ${preview.rows.length} rows — platform not detected, but you can still import`}
+        </div>
+        {isMobile ? (
+          // Card layout for mobile (<640px) — matches Meesho app pattern
+          <div>
+            {preview.rows.slice(0, 3).map((row, ri) => (
+              <div key={ri} style={{ background: 'var(--surface)', borderRadius: 'var(--radius)', padding: '8px 10px', marginBottom: 6, fontSize: 11, border: '1px solid var(--border)' }}>
+                {labels.slice(0, 3).map((label, ci) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{label}</span>
+                    <span style={{ color: 'var(--text-secondary)', maxWidth: '58%', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cell(row, ci)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          // Table layout for desktop
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, color: 'var(--text-secondary)' }}>
+              <thead>
+                <tr>{labels.map(l => <th key={l} style={{ textAlign: 'left', padding: '4px 6px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>{l}</th>)}</tr>
+              </thead>
+              <tbody>
+                {preview.rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {labels.map((_, ci) => <td key={ci} style={{ padding: '3px 6px', borderBottom: '1px solid var(--border)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cell(row, ci)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
         Import via CSV / Excel
       </div>
-      <label
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }}
-        style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          gap: 6, padding: '16px 12px', borderRadius: 'var(--radius)',
-          border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border2)'}`,
-          background: dragging ? 'var(--accent-dim)' : 'var(--surface2)',
-          cursor: 'pointer', transition: 'all 0.15s ease',
-        }}
-      >
-        <input type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
-        {uploading ? (
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Parsing…</span>
-        ) : (
-          <>
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Drop CSV/Excel here or click to browse</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{exportHint}</span>
-          </>
-        )}
-      </label>
-      {result && (
-        <div style={{ marginTop: 8, fontSize: 12, color: result.ok ? 'var(--success)' : 'var(--danger)' }}>{result.text}</div>
+
+      {uploadState === 'idle' && (
+        <label
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={e => { e.preventDefault(); setDragging(false); handleFileSelected(e.dataTransfer.files[0]); }}
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 6, padding: '16px 12px', borderRadius: 'var(--radius)',
+            border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border2)'}`,
+            background: dragging ? 'var(--accent-dim)' : 'var(--surface2)',
+            cursor: 'pointer', transition: 'all 0.15s ease',
+          }}
+        >
+          <input type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={e => handleFileSelected(e.target.files[0])} />
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Drop CSV/Excel here or click to browse</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{exportHint}</span>
+        </label>
+      )}
+
+      {uploadState === 'preview_loading' && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>Reading your file…</div>
+      )}
+
+      {(uploadState === 'preview_ok' || uploadState === 'preview_empty' || uploadState === 'preview_error') && (
+        <div>
+          {uploadState === 'preview_ok' && renderPreview()}
+          {uploadState === 'preview_empty' && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>No orders found in this file. Check that it contains data rows.</div>
+          )}
+          {uploadState === 'preview_error' && (
+            <div style={{ fontSize: 12, color: 'var(--danger)', padding: '8px 0' }}>{resultText || 'Could not read the file.'}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button
+              onClick={handleConfirmUpload}
+              disabled={uploadState === 'preview_error' || uploadState === 'preview_empty'}
+              style={{ flex: 1, padding: '7px 12px', borderRadius: 'var(--radius)', background: 'var(--accent)', color: '#fff', border: 'none', cursor: (uploadState === 'preview_error' || uploadState === 'preview_empty') ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, opacity: (uploadState === 'preview_error' || uploadState === 'preview_empty') ? 0.5 : 1 }}
+            >
+              Import these orders
+            </button>
+            <button onClick={handleCancel} style={{ padding: '7px 12px', borderRadius: 'var(--radius)', background: 'var(--surface2)', color: 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12 }}>
+              Choose a different file
+            </button>
+          </div>
+        </div>
+      )}
+
+      {uploadState === 'xlsx_confirm' && (
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '8px 0' }}>
+            <strong>{selectedFile?.name}</strong> — Excel file ready to import.
+            <br /><span style={{ color: 'var(--text-muted)' }}>Your orders will be added to your dashboard.</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button onClick={handleConfirmUpload} style={{ flex: 1, padding: '7px 12px', borderRadius: 'var(--radius)', background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+              Import this file
+            </button>
+            <button onClick={handleCancel} style={{ padding: '7px 12px', borderRadius: 'var(--radius)', background: 'var(--surface2)', color: 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12 }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {uploadState === 'uploading' && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '12px 0' }}>Uploading and processing your orders…</div>
+      )}
+
+      {(uploadState === 'result_ok' || uploadState === 'result_error') && (
+        <div style={{ marginTop: 8, fontSize: 12, color: uploadState === 'result_ok' ? 'var(--success)' : 'var(--danger)' }}>{resultText}</div>
       )}
     </div>
   );
