@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const crypto  = require('crypto');
 const prisma  = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -758,20 +758,27 @@ async function handlePlatformImport(req, res, next, expectedPlatform) {
   let fileFound = false;
   let fileName = '';
   let mimeType = '';
+  let fileTooLarge = false;
 
   await new Promise((resolve, reject) => {
-    const bb = busboy({ headers: req.headers });
+    const bb = busboy({ headers: req.headers, limits: { fileSize: 10 * 1024 * 1024 } });
     bb.on('file', (_field, stream, info) => {
+      if (fileFound) { stream.resume(); return; } // reject second file field
       fileFound = true;
       fileName = info.filename || '';
       mimeType = info.mimeType || info.mimetype || '';
-      stream.on('data', chunk => { fileBuffer = Buffer.concat([fileBuffer, chunk]); });
+      stream.on('data', chunk => { if (!fileTooLarge) fileBuffer = Buffer.concat([fileBuffer, chunk]); });
+      stream.on('limit', () => { fileTooLarge = true; fileBuffer = Buffer.alloc(0); stream.resume(); });
       stream.on('end', () => {});
     });
     bb.on('finish', resolve);
     bb.on('error', reject);
     req.pipe(bb);
   });
+
+  if (fileTooLarge) {
+    return res.status(413).json({ error: 'File too large. Maximum size is 10MB.' });
+  }
 
   if (!fileFound || fileBuffer.length === 0) {
     return res.status(400).json({ error: 'No file provided' });
@@ -800,35 +807,32 @@ async function handlePlatformImport(req, res, next, expectedPlatform) {
     result = await upsertPlatformOrders(brandId, expectedPlatform, parsed.orders);
 
     // Auto-create Product records for any new SKUs found in order items
-    const skuMap = {};
-    for (const order of parsed.orders) {
-      const size = order.metadata?.size || null;
-      const color = order.metadata?.color || null;
-      for (const item of (order.items || [])) {
-        if (item.sku && !skuMap[item.sku]) {
-          skuMap[item.sku] = { name: item.name || item.sku, size, color };
+    try {
+      const skuMap = {};
+      for (const order of parsed.orders) {
+        const size = order.metadata?.size || null;
+        const color = order.metadata?.color || null;
+        for (const item of (order.items || [])) {
+          if (item.sku && !skuMap[item.sku]) {
+            skuMap[item.sku] = { name: item.name || item.sku, size, color };
+          }
         }
       }
-    }
-    const skuList = Object.keys(skuMap);
-    if (skuList.length > 0) {
-      const existing = await prisma.product.findMany({
-        where: { brandId, sku: { in: skuList } },
-        select: { sku: true },
-      });
-      const existingSet = new Set(existing.map(p => p.sku));
-      const toCreate = skuList.filter(s => !existingSet.has(s));
-      if (toCreate.length > 0) {
+      const skuList = Object.keys(skuMap);
+      if (skuList.length > 0) {
         await prisma.product.createMany({
-          data: toCreate.map(sku => ({
+          data: skuList.map(sku => ({
             brandId, sku,
             name: skuMap[sku].name,
             size: skuMap[sku].size || null,
             color: skuMap[sku].color || null,
             category: 'Uncategorized',
           })),
+          skipDuplicates: true,
         });
       }
+    } catch (productErr) {
+      console.warn('[import] product auto-create failed (orders still saved):', productErr.message);
     }
   }
 
@@ -839,13 +843,17 @@ async function handlePlatformImport(req, res, next, expectedPlatform) {
     uploads: { [reportType]: uploadEntry },
   });
 
-  await prisma.integration.update({
-    where: { brandId_platform: { brandId, platform: expectedPlatform } },
-    data: { lastSyncAt: new Date(), metadata: mergedMeta },
-  });
+  try {
+    await prisma.integration.update({
+      where: { brandId_platform: { brandId, platform: expectedPlatform } },
+      data: { lastSyncAt: new Date(), metadata: mergedMeta },
+    });
+  } catch (updateErr) {
+    console.warn('[import] integration metadata update failed (orders still saved):', updateErr.message);
+  }
 
   invalidateAnalyticsCache(brandId);
-  res.json({ ok: true, inserted: result.inserted, skipped: result.skipped, reportType });
+  res.json({ ok: true, inserted: result.inserted, skipped: result.skipped, reportType, ordersImported: result.inserted });
 }
 
 function parsePlatformFile(fileBuffer, fileName, mimeType, parseCSV) {
@@ -857,22 +865,29 @@ function parsePlatformFile(fileBuffer, fileName, mimeType, parseCSV) {
   }
 
   const header = fileBuffer.slice(0, 8);
-  const looksLikeXlsx = /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/i.test(mimeType)
-    || header.slice(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-  const looksLikeXls = /application\/vnd\.ms-excel/i.test(mimeType)
-    || header.equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  // Trust magic bytes; MIME is attacker-controlled so only use it as a hint when extension also matches
+  const xlsxMagic = header.slice(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  const xlsMagic  = header.equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  const looksLikeXlsx = xlsxMagic || (ext === 'xlsx' && /application\/vnd\.openxmlformats/i.test(mimeType));
+  const looksLikeXls  = xlsMagic  || (ext === 'xls'  && /application\/vnd\.ms-excel/i.test(mimeType));
 
   if (looksLikeXlsx || looksLikeXls || ext === 'xlsx' || ext === 'xls') {
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error('Excel file has no worksheet');
-    const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName], { FS: ',', RS: '\n' });
+    const sheet = workbook.Sheets[sheetName];
+    const ref = sheet['!ref'];
+    if (ref) {
+      const range = XLSX.utils.decode_range(ref);
+      if (range.e.r > 100000) throw new Error('Excel file too large — maximum 100,000 data rows supported.');
+    }
+    const csv = XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
     if (!csv.trim()) throw new Error('Uploaded Excel file is empty');
     return parseCSV(csv);
   }
 
   if (ext === 'csv' || ext === 'txt') {
-    return parseCSV(fileBuffer.toString('utf8'));
+    return parseCSV(fileBuffer.toString('utf8').replace(/^\uFEFF/, ''));
   }
 
   throw new Error('Unsupported file format. Please upload a .csv or .xlsx file.');
