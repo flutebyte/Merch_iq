@@ -1,5 +1,10 @@
 const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
+function clearSessionAndReload() {
+  ['inv_token', 'inv_user', 'inv_brand', 'inv_appStage'].forEach(k => localStorage.removeItem(k));
+  window.location.href = '/login';
+}
+
 async function request(method, path, data, token) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: method.toUpperCase(),
@@ -12,6 +17,13 @@ async function request(method, path, data, token) {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
+
+    // Stale token or brand deleted — clear session and send to login
+    if (res.status === 401 || res.status === 403) {
+      clearSessionAndReload();
+      return;
+    }
+
     const err = new Error(body.error || 'Request failed');
     err.status = res.status;
     err.data = body;
