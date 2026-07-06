@@ -70,7 +70,7 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
           <button className="btn btn-ghost" onClick={() => onNavigate('photo')}>
             <Camera size={14} /> Add via photo
           </button>
-          <button className="btn btn-primary">
+          <button className="btn btn-primary" onClick={() => onNavigate('photo')}>
             <Plus size={14} /> Add product
           </button>
         </div>
