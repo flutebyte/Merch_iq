@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendingDown, AlertTriangle, Zap, ClipboardList, ArrowRight, TrendingUp, Package, Eye, Activity } from 'lucide-react';
+import { TrendingDown, AlertTriangle, ClipboardList, ArrowRight, TrendingUp, Package, Eye, Activity } from 'lucide-react';
 import { useFetch } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrand } from '../contexts/BrandContext';
@@ -102,6 +102,8 @@ export default function Dashboard({ onNavigate }) {
   const deadStockValue = deadStockItems.filter(p => p.stuckValue).reduce((s, p) => s + p.stuckValue, 0);
   const deadStockCount = deadStockItems.length;
   const pendingActions = actionTasks.length;
+  const verifiedCount  = products.filter(p => p.status === 'verified').length;
+  const verifiedPct    = products.length > 0 ? Math.round(verifiedCount / products.length * 100) : null;
 
   const weekRevenue  = revenueData?.totalRevenue ?? null;
   const wowGrowth    = revenueData?.momGrowth ?? null;
@@ -192,34 +194,6 @@ export default function Dashboard({ onNavigate }) {
         </div>
       )}
 
-      {/* Recovery banner — only when dead stock value is meaningful */}
-      {deadStockValue > 0 && (
-        <div style={{
-          padding: '14px 20px', marginBottom: 24,
-          background: 'linear-gradient(135deg, var(--accent-dim), rgba(99,102,241,0.03))',
-          border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-lg)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
-          boxShadow: 'var(--shadow-sm)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 9, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Zap size={17} color="#fff" />
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>
-                <span style={{ color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>{fmt(deadStockValue)}</span>
-                {' '}in potential recovery
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {deadStockCount} dead stock item{deadStockCount !== 1 ? 's' : ''} identified
-              </div>
-            </div>
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={() => onNavigate('actions')}>
-            Review opportunities <ArrowRight size={13} />
-          </button>
-        </div>
-      )}
 
       {/* Low-stock alert strip */}
       {!alertsDismissed && lowStockData?.items?.length > 0 && (
@@ -258,7 +232,7 @@ export default function Dashboard({ onNavigate }) {
       )}
 
       {/* Metric cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14, marginBottom: 24 }}>
         <MetricCard
           icon={AlertTriangle} theme="danger"
           label="Inventory At Risk" value={atRisk}
@@ -266,15 +240,15 @@ export default function Dashboard({ onNavigate }) {
           onClick={() => onNavigate('inventory')}
         />
         <MetricCard
-          icon={TrendingUp} theme="success"
-          label="Potential Recovery" value={fmt(deadStockValue)}
-          sub={`${deadStockCount} dead stock item${deadStockCount !== 1 ? 's' : ''}`}
+          icon={TrendingDown} theme="warning"
+          label="Dead Stock" value={deadStockCount}
+          sub={deadStockValue > 0 ? `${fmt(deadStockValue)} recoverable` : 'No cost price set'}
           onClick={() => onNavigate('actions')}
         />
         <MetricCard
-          icon={TrendingDown} theme="warning"
-          label="Dead Stock" value={deadStockCount}
-          sub="Unmoved products"
+          icon={TrendingUp} theme="success"
+          label="Verified Inventory" value={verifiedPct != null ? `${verifiedPct}%` : '—'}
+          sub={`${verifiedCount} of ${products.length} products`}
           onClick={() => onNavigate('inventory')}
         />
         <MetricCard
@@ -286,7 +260,7 @@ export default function Dashboard({ onNavigate }) {
       </div>
 
       {/* Two columns: Action Center preview + Dead Stock preview */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14, marginBottom: 14 }}>
         {/* Action Center preview */}
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
