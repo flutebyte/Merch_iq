@@ -1,10 +1,19 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { sendPasswordResetEmail } = require('../services/mailer');
 
 const router = express.Router();
+
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — within OWASP's 15-60 min guidance
+const GENERIC_RESET_MESSAGE = 'If an account exists for that email, a password reset link has been sent.';
+
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 router.post('/signup', async (req, res, next) => {
   try {
@@ -92,6 +101,61 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
     if (!valid) return res.status(401).json({ error: 'current password is incorrect' });
     const newHash = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({ where: { id: req.userId }, data: { passwordHash: newHash } });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'email is required' });
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetTokenHash: hashResetToken(token),
+          passwordResetExpiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+
+      const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
+      sendPasswordResetEmail(user.email, resetUrl);
+
+      // Non-production convenience only: lets the flow be exercised without real email infra.
+      if (process.env.NODE_ENV !== 'production') {
+        return res.json({ ok: true, message: GENERIC_RESET_MESSAGE, devResetUrl: resetUrl });
+      }
+    }
+
+    // Same response whether or not the email is registered — avoids account enumeration.
+    res.json({ ok: true, message: GENERIC_RESET_MESSAGE });
+  } catch (err) { next(err); }
+});
+
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'token and newPassword are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'new password must be at least 8 characters' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { passwordResetTokenHash: hashResetToken(token) } });
+    if (!user || !user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, passwordResetTokenHash: null, passwordResetExpiresAt: null },
+    });
+
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

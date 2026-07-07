@@ -12,4 +12,10 @@ export const authApi = {
 
   me: (token) =>
     api.get('/auth/me', token),
+
+  forgotPassword: (email) =>
+    api.post('/auth/forgot-password', { email }),
+
+  resetPassword: (token, newPassword) =>
+    api.post('/auth/reset-password', { token, newPassword }),
 };
