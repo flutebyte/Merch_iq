@@ -22,16 +22,18 @@
     "csv-parse": "^6.2.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "xlsx": "^0.18.5",
+    "express-rate-limit": "^7.5.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "pg-boss": "^9.0.3",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.1.4",
-    "prisma": "^5.16.0"
+    "prisma": "^5.16.0",
+    "supertest": "^7.2.2"
   },
   "jest": {
     "testEnvironment": "node",
