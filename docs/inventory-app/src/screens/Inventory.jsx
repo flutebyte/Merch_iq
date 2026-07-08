@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Search, Filter, Plus, Camera, ChevronRight, Package } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, Plus, Camera, ChevronRight, ChevronLeft, Package } from 'lucide-react';
 import { useFetch } from '../hooks/useApi';
 
 const fmt = (n) => n == null ? '—' : `₹${n.toLocaleString('en-IN')}`;
+const PAGE_SIZE = 50;
 
 function mapProduct(p) {
   const lots = p.stockLots || [];
@@ -32,6 +33,7 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [page, setPage] = useState(1);
 
   const { data: rawProducts, loading, error, refetch } = useFetch('/products');
   const allProducts = (rawProducts || []).map(mapProduct);
@@ -50,6 +52,14 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
     const matchCat = categoryFilter === 'all' || p.category === categoryFilter;
     return matchSearch && matchStatus && matchCat;
   });
+
+  // Reset to page 1 whenever the result set changes shape so users don't get
+  // stranded on a now-empty page after narrowing a search/filter.
+  useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const stats = {
     all:        allProducts.length,
@@ -162,16 +172,24 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
                 </td>
               </tr>
             )}
-            {filtered.map((p, i) => (
+            {paged.map((p, i) => (
               <tr
                 key={p.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`View ${p.name}`}
                 style={{
                   borderTop: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.1s ease',
                   animation: `fadeIn 0.2s ease ${i * 0.03}s both`
                 }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                onFocus={e => e.currentTarget.style.background = 'var(--surface2)'}
+                onBlur={e => e.currentTarget.style.background = 'transparent'}
                 onClick={() => onSelectProduct(p)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectProduct(p); }
+                }}
               >
                 <td style={{ padding: '14px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -241,8 +259,37 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
         </table>
       </div>
 
-      <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-        {loading ? 'Loading…' : `${filtered.length} of ${allProducts.length} products`}
+      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          {loading
+            ? 'Loading…'
+            : filtered.length === 0
+              ? `0 of ${allProducts.length} products`
+              : `Showing ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, filtered.length)} of ${filtered.length} products`}
+        </div>
+        {!loading && pageCount > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={14} /> Prev
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              Page {safePage} of {pageCount}
+            </span>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+              disabled={safePage >= pageCount}
+              aria-label="Next page"
+            >
+              Next <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
