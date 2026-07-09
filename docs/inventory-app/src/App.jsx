@@ -5,6 +5,8 @@ import { BrandProvider } from './contexts/BrandContext';
 import { ToastProvider } from './contexts/ToastContext';
 import Login from './screens/Login';
 import Signup from './screens/Signup';
+import ForgotPassword from './screens/ForgotPassword';
+import ResetPassword from './screens/ResetPassword';
 import MainApp from './MainApp';
 
 function RequireAuth({ children }) {
@@ -24,9 +26,11 @@ export default function App() {
         <ToastProvider>
           <BrowserRouter>
             <Routes>
-              <Route path="/login"  element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
-              <Route path="/signup" element={<RedirectIfAuth><Signup /></RedirectIfAuth>} />
-              <Route path="/*"      element={<RequireAuth><MainApp /></RequireAuth>} />
+              <Route path="/login"           element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
+              <Route path="/signup"          element={<RedirectIfAuth><Signup /></RedirectIfAuth>} />
+              <Route path="/forgot-password" element={<RedirectIfAuth><ForgotPassword /></RedirectIfAuth>} />
+              <Route path="/reset-password"  element={<RedirectIfAuth><ResetPassword /></RedirectIfAuth>} />
+              <Route path="/*"               element={<RequireAuth><MainApp /></RequireAuth>} />
             </Routes>
           </BrowserRouter>
         </ToastProvider>
