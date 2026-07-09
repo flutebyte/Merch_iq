@@ -4,6 +4,7 @@ import {
   Camera, Tag, Hash, ChevronRight, Loader, RefreshCw
 } from 'lucide-react';
 import { useFetch, useApiRequest } from '../hooks/useApi';
+import { useToast } from '../contexts/ToastContext';
 
 const TYPE_META = {
   resolve_conflict:  { icon: AlertTriangle, color: 'var(--danger)',  label: 'Conflict' },
@@ -25,6 +26,7 @@ const PRIORITY_COLOR = {
 export default function ActionCenter({ onNavigate, onSelectProduct }) {
   const { data, loading, error, refetch } = useFetch('/action-queue');
   const { post, patch } = useApiRequest();
+  const { showToast } = useToast();
   const [dismissed, setDismissed] = useState([]);
   const [expanded, setExpanded]   = useState(null);
   const [snoozing, setSnoozing]   = useState(null);
@@ -41,6 +43,10 @@ export default function ActionCenter({ onNavigate, onSelectProduct }) {
       await post(`/action-queue/${taskId}/snooze`);
       setDismissed(d => [...d, taskId]);
       if (expanded === taskId) setExpanded(null);
+    } catch (e) {
+      showToast(e.message === 'Failed to fetch'
+        ? "Couldn't snooze this — check your connection and try again."
+        : `Couldn't snooze this: ${e.message}`, { variant: 'error' });
     } finally {
       setSnoozing(null);
     }
@@ -54,6 +60,11 @@ export default function ActionCenter({ onNavigate, onSelectProduct }) {
       if (expanded === task.id) setExpanded(null);
       window.dispatchEvent(new CustomEvent('inv:mutation'));
       refetch();
+      showToast('Conflict resolved.', { variant: 'success', duration: 3000 });
+    } catch (e) {
+      showToast(e.message === 'Failed to fetch'
+        ? "Couldn't resolve this conflict — check your connection and try again."
+        : `Couldn't resolve this conflict: ${e.message}`, { variant: 'error' });
     } finally {
       setResolving(null);
     }

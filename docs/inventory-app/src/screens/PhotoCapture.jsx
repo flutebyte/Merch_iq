@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Plus, Check, AlertCircle, Loader, AlertTriangle } from 'lucide-react';
+import { Camera, Plus, Check, AlertCircle, Loader, AlertTriangle, RotateCw } from 'lucide-react';
 import { useApiRequest } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api/client';
 import { uploadImage } from '../utils/imageUpload';
 
 function Field({ label, optional, value, onChange, placeholder, type = 'text', mono = false }) {
@@ -37,6 +38,7 @@ export default function PhotoCapture({ onComplete }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError]         = useState(null);
   const [conflict, setConflict]   = useState(null);
+  const [retrying, setRetrying]   = useState({});
   const { post, patch, loading }  = useApiRequest();
   const { token }                 = useAuth();
   const previewUrlRef             = useRef(null);
@@ -100,7 +102,9 @@ export default function PhotoCapture({ onComplete }) {
         throw err;
       }
 
-      let finalPreview = preview;
+      let finalPreview = null;
+      let photoFile = null;
+      let photoFailed = false;
       if (imageFile) {
         setUploading(true);
         try {
@@ -108,7 +112,11 @@ export default function PhotoCapture({ onComplete }) {
           await patch(`/products/${product.id}`, { images: [imageUrl] });
           finalPreview = imageUrl;
         } catch (_) {
-          // image upload failure does not block the capture
+          // Upload failed — don't block the capture, but keep the file so the
+          // user can retry, and don't reuse the local blob URL as `finalPreview`
+          // since it gets revoked below.
+          photoFailed = true;
+          photoFile = imageFile;
         } finally {
           setUploading(false);
         }
@@ -133,6 +141,8 @@ export default function PhotoCapture({ onComplete }) {
         name: current.name || `Draft Item ${prev.length + 1}`,
         quantity: variants.length > 0 ? variants.map(v => `${v.color}: ${v.quantity}`).join(', ') : (current.quantity || 'Unknown'),
         preview: finalPreview,
+        photoFailed,
+        photoFile,
         timestamp: new Date().toLocaleTimeString(),
       }, ...prev]);
 
@@ -154,7 +164,9 @@ export default function PhotoCapture({ onComplete }) {
 
     try {
       const existingId = conflict.existingProduct.id;
-      let finalPreview = preview;
+      let finalPreview = null;
+      let photoFile = null;
+      let photoFailed = false;
       if (imageFile) {
         setUploading(true);
         try {
@@ -162,7 +174,10 @@ export default function PhotoCapture({ onComplete }) {
           await patch(`/products/${existingId}`, { images: [imageUrl], color: current.color.trim() || conflict.existingProduct.color || null });
           finalPreview = imageUrl;
         } catch (_) {
-          // ignore image upload failures
+          // Upload failed — keep the file so the user can retry from the
+          // captured list instead of silently losing the photo.
+          photoFailed = true;
+          photoFile = imageFile;
         } finally {
           setUploading(false);
         }
@@ -190,6 +205,8 @@ export default function PhotoCapture({ onComplete }) {
         name: conflict.existingProduct.name,
         quantity: variants.length > 0 ? variants.map(v => `${v.color}: ${v.quantity}`).join(', ') : (current.quantity || 'Unknown'),
         preview: finalPreview,
+        photoFailed,
+        photoFile,
         timestamp: new Date().toLocaleTimeString(),
       }, ...prev]);
 
@@ -206,6 +223,26 @@ export default function PhotoCapture({ onComplete }) {
 
   const handleCapture      = () => doCapture();
   const handleForceCreate  = () => { setConflict(null); doCapture({ skipSku: conflict?.error === 'sku_conflict', forceCreate: true }); };
+
+  const retryPhotoUpload = async (item) => {
+    if (!item.photoFile || retrying[item.id]) return;
+    setRetrying(prev => ({ ...prev, [item.id]: true }));
+    try {
+      const imageUrl = await uploadImage(item.photoFile, token);
+      await api.patch(`/products/${item.id}`, { images: [imageUrl] }, token);
+      setCaptured(prev => prev.map(c => c.id === item.id
+        ? { ...c, preview: imageUrl, photoFailed: false, photoFile: null }
+        : c));
+    } catch (_) {
+      // Still failed — leave photoFailed set so the retry option stays visible.
+    } finally {
+      setRetrying(prev => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }
+  };
 
   const isLoading = loading || uploading;
 
@@ -366,9 +403,31 @@ export default function PhotoCapture({ onComplete }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{item.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Qty: {item.quantity} · {item.timestamp}</div>
+                  {item.photoFailed && (
+                    <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <AlertTriangle size={11} />
+                      Photo didn't upload — item saved without it
+                      <button
+                        type="button"
+                        onClick={() => retryPhotoUpload(item)}
+                        disabled={!!retrying[item.id]}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: 0, marginLeft: 4 }}
+                      >
+                        <RotateCw size={11} style={retrying[item.id] ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+                        {retrying[item.id] ? 'Retrying…' : 'Retry'}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--success-dim)', border: '1px solid rgba(93,190,138,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Check size={12} color="var(--success)" />
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                  background: item.photoFailed ? 'var(--warning-dim)' : 'var(--success-dim)',
+                  border: item.photoFailed ? '1px solid rgba(251,191,36,0.3)' : '1px solid rgba(93,190,138,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {item.photoFailed
+                    ? <AlertTriangle size={12} color="var(--warning)" />
+                    : <Check size={12} color="var(--success)" />}
                 </div>
               </div>
             ))}

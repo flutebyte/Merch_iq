@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BrandProvider } from './contexts/BrandContext';
+import { ToastProvider } from './contexts/ToastContext';
 import Login from './screens/Login';
 import Signup from './screens/Signup';
 import ForgotPassword from './screens/ForgotPassword';
@@ -22,15 +23,17 @@ export default function App() {
   return (
     <AuthProvider>
       <BrandProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login"           element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
-            <Route path="/signup"          element={<RedirectIfAuth><Signup /></RedirectIfAuth>} />
-            <Route path="/forgot-password" element={<RedirectIfAuth><ForgotPassword /></RedirectIfAuth>} />
-            <Route path="/reset-password"  element={<RedirectIfAuth><ResetPassword /></RedirectIfAuth>} />
-            <Route path="/*"               element={<RequireAuth><MainApp /></RequireAuth>} />
-          </Routes>
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login"           element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
+              <Route path="/signup"          element={<RedirectIfAuth><Signup /></RedirectIfAuth>} />
+              <Route path="/forgot-password" element={<RedirectIfAuth><ForgotPassword /></RedirectIfAuth>} />
+              <Route path="/reset-password"  element={<RedirectIfAuth><ResetPassword /></RedirectIfAuth>} />
+              <Route path="/*"               element={<RequireAuth><MainApp /></RequireAuth>} />
+            </Routes>
+          </BrowserRouter>
+        </ToastProvider>
       </BrandProvider>
     </AuthProvider>
   );
