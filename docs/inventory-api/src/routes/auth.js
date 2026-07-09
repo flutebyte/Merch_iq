@@ -5,13 +5,14 @@ const jwt = require('jsonwebtoken');
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { sendPasswordResetEmail } = require('../services/emailService');
+const { loginLimiter, signupLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-router.post('/signup', async (req, res, next) => {
+router.post('/signup', signupLimiter, async (req, res, next) => {
   try {
     const { email, password, brandName } = req.body;
 
@@ -51,7 +52,7 @@ router.post('/signup', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
@@ -82,7 +83,7 @@ router.post('/login', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/change-password', requireAuth, async (req, res, next) => {
+router.post('/change-password', requireAuth, loginLimiter, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
