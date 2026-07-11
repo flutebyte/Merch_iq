@@ -208,8 +208,8 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
       setVerified(true);
       window.dispatchEvent(new CustomEvent('inv:mutation'));
       if (onUpdate) onUpdate();
-    } catch (_) {
-      setVerified(true);
+    } catch (err) {
+      setSaveError(err.message || 'Failed to verify stock — your count was not saved. Please try again.');
     } finally {
       setVerifying(false);
     }
