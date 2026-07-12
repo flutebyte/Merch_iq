@@ -80,6 +80,9 @@ export default function ActionCenter({ onNavigate, onSelectProduct }) {
       else onNavigate('inventory');
     };
 
+    const panelId = `task-panel-${task.id}`;
+    const toggle = () => setExpanded(isOpen ? null : task.id);
+
     return (
       <div
         style={{
@@ -90,8 +93,16 @@ export default function ActionCenter({ onNavigate, onSelectProduct }) {
         }}
       >
         <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={isOpen}
+          aria-controls={panelId}
+          aria-label={`${task.label}, ${PRIORITY_LABEL[task.priority]} priority`}
           style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', cursor: 'pointer' }}
-          onClick={() => setExpanded(isOpen ? null : task.id)}
+          onClick={toggle}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+          }}
         >
           <div style={{
             width: 34, height: 34, borderRadius: 8, flexShrink: 0,
@@ -126,7 +137,7 @@ export default function ActionCenter({ onNavigate, onSelectProduct }) {
         </div>
 
         {isOpen && (
-          <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: 'var(--surface2)', animation: 'fadeIn 0.15s ease' }}>
+          <div id={panelId} role="region" aria-label={`Actions for ${task.label}`} style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: 'var(--surface2)', animation: 'fadeIn 0.15s ease' }}>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
               <strong style={{ color: 'var(--text-primary)' }}>Product:</strong> {task.productName}
             </div>
