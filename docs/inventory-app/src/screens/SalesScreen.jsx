@@ -380,12 +380,22 @@ export default function SalesScreen({ onNavigate }) {
                   const firstItem = items[0];
                   const totalQty = items.reduce((s, it) => s + (it.qty || 1), 0);
                   const platformColor = PLATFORM_COLOR[o.platform] || 'var(--accent)';
+                  const openable = Boolean(o.platformOrderId);
                   return (
                     <tr key={o.platformOrderId || i}
-                      style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.1s', cursor: 'pointer' }}
+                      tabIndex={openable ? 0 : undefined}
+                      role={openable ? 'button' : undefined}
+                      aria-label={openable ? `View order ${o.platformOrderId}` : undefined}
+                      style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.1s', cursor: openable ? 'pointer' : 'default' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                      onClick={() => o.platformOrderId && setSelectedOrderId(o.platformOrderId)}
+                      onFocus={e => e.currentTarget.style.background = 'var(--surface2)'}
+                      onBlur={e => e.currentTarget.style.background = 'transparent'}
+                      onClick={() => openable && setSelectedOrderId(o.platformOrderId)}
+                      onKeyDown={e => {
+                        if (!openable) return;
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedOrderId(o.platformOrderId); }
+                      }}
                     >
                       <td style={{ padding: '10px 14px', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                         {(o.platformOrderId || '').slice(0, 14)}
