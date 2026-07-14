@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Camera, ChevronRight, ChevronLeft, Package } from 'lucide-react';
+import { Search, Filter, Plus, Camera, ChevronRight, ChevronLeft, Package, Download } from 'lucide-react';
 import { useFetch } from '../hooks/useApi';
+import { useToast } from '../contexts/ToastContext';
+import { toCsv, downloadCsv } from '../utils/csv';
 
 const fmt = (n) => n == null ? '—' : `₹${n.toLocaleString('en-IN')}`;
 const PAGE_SIZE = 50;
+
+const EXPORT_COLUMNS = [
+  { label: 'Name',          value: p => p.name },
+  { label: 'SKU',           value: p => p.sku || '' },
+  { label: 'Category',      value: p => p.category },
+  { label: 'Size',          value: p => p.size || '' },
+  { label: 'Color',         value: p => p.color || '' },
+  { label: 'Quantity',      value: p => p.quantity ?? '' },
+  { label: 'Price (INR)',   value: p => p.price ?? '' },
+  { label: 'Status',        value: p => p.status },
+  { label: 'Dead Stock',    value: p => p.isDeadStock ? 'Yes' : 'No' },
+  { label: 'Days Unmoved',  value: p => p.daysUnmoved ?? '' },
+];
 
 function mapProduct(p) {
   const lots = p.stockLots || [];
@@ -34,6 +49,7 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [page, setPage] = useState(1);
+  const { showToast } = useToast();
 
   const { data: rawProducts, loading, error, refetch } = useFetch('/products');
   const allProducts = (rawProducts || []).map(mapProduct);
@@ -68,6 +84,17 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
     draft:      allProducts.filter(p => p.status === 'draft').length,
   };
 
+  const handleExport = () => {
+    if (filtered.length === 0) {
+      showToast('No products match the current filters to export.', { variant: 'error' });
+      return;
+    }
+    const csv = toCsv(EXPORT_COLUMNS, filtered);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`inventory-${stamp}.csv`, csv);
+    showToast(`Exported ${filtered.length} product${filtered.length !== 1 ? 's' : ''} to CSV.`, { variant: 'success' });
+  };
+
   return (
     <div style={{ padding: '28px 24px', maxWidth: 1100, margin: '0 auto', animation: 'fadeIn 0.3s ease' }}>
       {/* Header */}
@@ -77,6 +104,14 @@ export default function Inventory({ onSelectProduct, onNavigate }) {
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 32 }}>All Products</h1>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-ghost"
+            onClick={handleExport}
+            disabled={loading || !!error}
+            title="Export the currently filtered products to a CSV file"
+          >
+            <Download size={14} /> Export CSV
+          </button>
           <button className="btn btn-ghost" onClick={() => onNavigate('photo')}>
             <Camera size={14} /> Add via photo
           </button>
