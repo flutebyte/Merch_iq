@@ -2,6 +2,9 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 function clearSessionAndReload() {
   ['inv_token', 'inv_user', 'inv_brand', 'inv_appStage'].forEach(k => localStorage.removeItem(k));
+  // Flag for the login screen so the redirect isn't a silent, unexplained
+  // dump back to the sign-in form — see Login.jsx's session-expired banner.
+  try { sessionStorage.setItem('inv_session_expired', '1'); } catch { /* storage unavailable */ }
   window.location.href = '/login';
 }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowRight, Loader } from 'lucide-react';
+import { ArrowRight, Loader, Clock } from 'lucide-react';
 import { authApi } from '../api/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrand } from '../contexts/BrandContext';
@@ -10,6 +10,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
+  const [sessionExpired] = useState(() => {
+    try {
+      const expired = sessionStorage.getItem('inv_session_expired') === '1';
+      if (expired) sessionStorage.removeItem('inv_session_expired');
+      return expired;
+    } catch { return false; }
+  });
 
   const { login }    = useAuth();
   const { setBrand } = useBrand();
@@ -56,6 +63,16 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {sessionExpired && !error && (
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8,
+              padding: '12px 16px', background: 'var(--warning-dim)', border: '1px solid rgba(251,191,36,0.3)',
+              borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--warning)', lineHeight: 1.4,
+            }}>
+              <Clock size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>Your session has expired. Please log in again — any unsaved changes on your last page may need to be re-entered.</span>
+            </div>
+          )}
           {error && (
             <div style={{
               padding: '12px 16px', background: 'var(--danger-dim)', border: '1px solid rgba(232,90,79,0.25)',
