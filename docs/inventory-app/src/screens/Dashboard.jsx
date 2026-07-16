@@ -292,7 +292,13 @@ export default function Dashboard({ onNavigate }) {
             {topActions.map(t => (
               <div
                 key={t.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${t.label}, priority ${t.priority}`}
                 onClick={() => onNavigate('actions')}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate('actions'); }
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
                   background: 'var(--surface2)', borderRadius: 'var(--radius)',
@@ -300,6 +306,8 @@ export default function Dashboard({ onNavigate }) {
                 }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface3)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface2)'}
+                onFocus={e => e.currentTarget.style.background = 'var(--surface3)'}
+                onBlur={e => e.currentTarget.style.background = 'var(--surface2)'}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</div>
@@ -339,7 +347,13 @@ export default function Dashboard({ onNavigate }) {
             {deadStockItems.slice(0, 4).map(p => (
               <div
                 key={p.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${p.name}, quantity ${p.quantity ?? 'unknown'}${p.stuckValue ? `, ${fmt(p.stuckValue)} recoverable` : ''}`}
                 onClick={() => onNavigate('inventory')}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate('inventory'); }
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '9px 12px',
                   background: 'var(--surface2)', borderRadius: 'var(--radius)',
@@ -347,6 +361,8 @@ export default function Dashboard({ onNavigate }) {
                 }}
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--surface3)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface2)'}
+                onFocus={e => e.currentTarget.style.background = 'var(--surface3)'}
+                onBlur={e => e.currentTarget.style.background = 'var(--surface2)'}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>{p.name}</div>
@@ -389,7 +405,13 @@ export default function Dashboard({ onNavigate }) {
           {products.filter(p => p.missingDetails.length > 0 || p.status !== 'verified').slice(0, 6).map(p => (
             <div
               key={p.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`${p.name || 'Unnamed product'}, ${p.status}${p.missingDetails.length > 0 ? `, missing ${p.missingDetails.join(', ')}` : ', needs verification'}`}
               onClick={() => onNavigate('inventory')}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate('inventory'); }
+              }}
               style={{
                 padding: '12px', background: 'var(--surface2)', borderRadius: 'var(--radius)',
                 border: '1px solid var(--border)', cursor: 'pointer',
@@ -397,6 +419,8 @@ export default function Dashboard({ onNavigate }) {
               }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.background = 'var(--surface3)'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface2)'; }}
+              onFocus={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.background = 'var(--surface3)'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface2)'; }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{p.name || 'Unnamed product'}</span>
