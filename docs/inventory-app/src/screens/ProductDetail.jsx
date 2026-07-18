@@ -37,7 +37,9 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
   });
   const [verified, setVerified]         = useState(product.status === 'verified');
   const [verifying, setVerifying]       = useState(false);
-  const [chosenAction, setChosenAction] = useState(null);
+  const [chosenAction, setChosenAction] = useState(product.recoveryAction || null);
+  const [chosenActionAt, setChosenActionAt] = useState(product.recoveryActionAt || null);
+  const [savingAction, setSavingAction] = useState(false);
   const [localMissing, setLocalMissing] = useState(product.missingDetails || []);
 
   const [currentImage, setCurrentImage]     = useState(product.images?.[0] || null);
@@ -212,6 +214,27 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
       setSaveError(err.message || 'Failed to verify stock — your count was not saved. Please try again.');
     } finally {
       setVerifying(false);
+    }
+  };
+
+  // ── Recovery action ───────────────────────────────────────────────────────────
+  const handleChooseAction = async (actionId) => {
+    setSavingAction(true);
+    setSaveError(null);
+    const previous = chosenAction;
+    const previousAt = chosenActionAt;
+    setChosenAction(actionId);
+    try {
+      const updated = await patch(`/products/${product.id}`, { recoveryAction: actionId });
+      setChosenActionAt(updated.recoveryActionAt);
+      window.dispatchEvent(new CustomEvent('inv:mutation'));
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      setChosenAction(previous);
+      setChosenActionAt(previousAt);
+      setSaveError(err.message || 'Failed to save recovery action — please try again.');
+    } finally {
+      setSavingAction(false);
     }
   };
 
@@ -536,11 +559,11 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
             {deadStockActions.map(a => (
-              <button key={a.id} onClick={() => setChosenAction(a.id)} style={{
-                padding: '12px', borderRadius: 'var(--radius)', cursor: 'pointer',
+              <button key={a.id} onClick={() => handleChooseAction(a.id)} disabled={savingAction} style={{
+                padding: '12px', borderRadius: 'var(--radius)', cursor: savingAction ? 'not-allowed' : 'pointer',
                 border: `1px solid ${chosenAction === a.id ? a.color : 'var(--border)'}`,
                 background: chosenAction === a.id ? `${a.color}18` : 'var(--surface2)',
-                textAlign: 'left', transition: 'all 0.15s ease',
+                textAlign: 'left', transition: 'all 0.15s ease', opacity: savingAction && chosenAction !== a.id ? 0.6 : 1,
               }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: chosenAction === a.id ? a.color : 'var(--text-primary)', marginBottom: 2 }}>{a.label}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a.sub}</div>
@@ -549,8 +572,14 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
           </div>
           {chosenAction && (
             <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--success-dim)', borderRadius: 'var(--radius)', fontSize: 12, color: 'var(--success)', animation: 'fadeIn 0.2s ease' }}>
-              <Check size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-              Action "{deadStockActions.find(a => a.id === chosenAction)?.label}" noted.
+              {savingAction
+                ? <><Loader size={12} style={{ ...S.spin, marginRight: 6, verticalAlign: 'middle' }} /> Saving…</>
+                : <>
+                    <Check size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                    Recovery plan set to "{deadStockActions.find(a => a.id === chosenAction)?.label}"
+                    {chosenActionAt && ` on ${new Date(chosenActionAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                    — saved to this product.
+                  </>}
             </div>
           )}
         </div>

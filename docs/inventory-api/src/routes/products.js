@@ -6,6 +6,8 @@ const { invalidateCache } = require('../services/actionQueueGenerator');
 const router = express.Router();
 router.use(requireAuth);
 
+const RECOVERY_ACTIONS = ['discount', 'bundle', 'relist', 'wholesale', 'liquidate'];
+
 router.get('/', async (req, res, next) => {
   try {
     const { category, search } = req.query;
@@ -141,7 +143,11 @@ router.patch('/:id', async (req, res, next) => {
     const existing = await prisma.product.findFirst({ where: { id: req.params.id, brandId: req.brandId } });
     if (!existing) return res.status(404).json({ error: 'not found' });
 
-    const { sku, name, category, color, size, costPrice, sellingPrice, tags, images } = req.body;
+    const { sku, name, category, color, size, costPrice, sellingPrice, tags, images, recoveryAction } = req.body;
+
+    if (recoveryAction !== undefined && recoveryAction !== null && !RECOVERY_ACTIONS.includes(recoveryAction)) {
+      return res.status(400).json({ error: 'invalid_recovery_action', message: `recoveryAction must be one of: ${RECOVERY_ACTIONS.join(', ')}` });
+    }
 
     if (sku && sku.trim() && sku.trim().toLowerCase() !== (existing.sku || '').toLowerCase()) {
       const skuMatch = await prisma.product.findFirst({
@@ -169,6 +175,8 @@ router.patch('/:id', async (req, res, next) => {
         sellingPrice: sellingPrice !== undefined ? sellingPrice : existing.sellingPrice,
         tags:         tags         !== undefined ? tags         : existing.tags,
         images:       images       !== undefined ? images       : existing.images,
+        recoveryAction:   recoveryAction !== undefined ? recoveryAction : existing.recoveryAction,
+        recoveryActionAt: recoveryAction !== undefined ? (recoveryAction ? new Date() : null) : existing.recoveryActionAt,
       },
     });
 
