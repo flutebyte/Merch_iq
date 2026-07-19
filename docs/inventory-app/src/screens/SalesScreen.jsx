@@ -34,6 +34,14 @@ function RevenueLineGraph({ trend }) {
 
   const nonZeroDays = values.filter(v => v > 0).length;
   const avgRevenue  = nonZeroDays > 0 ? values.reduce((s, v) => s + v, 0) / nonZeroDays : 0;
+  const peakIndex   = values.indexOf(max);
+
+  // Screen readers get no information from an SVG path — summarize the trend
+  // in an aria-label and expose every point via a visually-hidden table
+  // (WCAG 1.1.1 non-text content needs a text equivalent, not just a caption).
+  const chartSummary = `Daily revenue line chart from ${fmtDate(trend[0]?.date)} to ${fmtDate(trend[trend.length - 1]?.date)}. `
+    + `Averaging ${fmt(avgRevenue)} per day across ${nonZeroDays} active day${nonZeroDays === 1 ? '' : 's'}, `
+    + `peaking at ${fmt(max)} on ${fmtDate(trend[peakIndex]?.date)}.`;
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -45,12 +53,16 @@ function RevenueLineGraph({ trend }) {
           avg {fmt(avgRevenue)}/day · {nonZeroDays} active days
         </span>
       </div>
-      <div style={{ background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: '8px 0 0', overflow: 'hidden', border: '1px solid var(--border)' }}>
+      <figure style={{ background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: '8px 0 0', overflow: 'hidden', border: '1px solid var(--border)', margin: 0 }}>
+        {/* role="img" on just the SVG so its aria-label stands in for the picture without
+            swallowing the sr-only <table> below — an ancestor role="img" would hide that from AT. */}
         <svg
           width="100%" height={H}
           viewBox={`0 0 ${W} ${H}`}
           preserveAspectRatio="none"
           style={{ display: 'block' }}
+          role="img"
+          aria-label={chartSummary}
         >
           <defs>
             <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
@@ -64,11 +76,28 @@ function RevenueLineGraph({ trend }) {
             <circle key={i} cx={x} cy={y} r="3" fill="#7c3aed" />
           ))}
         </svg>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', fontSize: 10, color: 'var(--text-muted)' }}>
-          <span>{trend[0]?.date ? new Date(trend[0].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}</span>
-          <span>{trend[trend.length - 1]?.date ? new Date(trend[trend.length - 1].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}</span>
+        <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', fontSize: 10, color: 'var(--text-muted)' }}>
+          <span>{fmtDate(trend[0]?.date)}</span>
+          <span>{fmtDate(trend[trend.length - 1]?.date)}</span>
         </div>
-      </div>
+        <table className="sr-only">
+          <caption>Daily revenue, {fmtDate(trend[0]?.date)} to {fmtDate(trend[trend.length - 1]?.date)}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trend.map((d, i) => (
+              <tr key={d.date || i}>
+                <th scope="row">{fmtDate(d.date)}</th>
+                <td>{fmt(d.revenue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </figure>
     </div>
   );
 }
