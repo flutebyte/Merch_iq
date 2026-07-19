@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TrendingDown, AlertTriangle, ClipboardList, ArrowRight, TrendingUp, Package, Eye, Activity } from 'lucide-react';
 import { useFetch } from '../hooks/useApi';
+import { useLocalPref } from '../hooks/useLocalPref';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrand } from '../contexts/BrandContext';
 
@@ -89,7 +90,11 @@ export default function Dashboard({ onNavigate }) {
   const { data: actionData,  loading: actionsLoading  } = useFetch('/action-queue');
   const { data: confidenceData } = useFetch(brand?.id ? `/brands/${brand.id}/confidence` : null);
   const { data: revenueData } = useFetch('/analytics/revenue?days=7');
-  const { data: lowStockData } = useFetch('/sales-intelligence/low-stock?threshold=5');
+  const [lowStockAlertsEnabled] = useLocalPref('notif_lowstock', true);
+  const [lowStockThresh] = useLocalPref('notif_threshold', 5);
+  const { data: lowStockData } = useFetch(
+    lowStockAlertsEnabled ? `/sales-intelligence/low-stock?threshold=${lowStockThresh}` : null
+  );
   const [alertsDismissed, setAlertsDismissed] = useState(false);
 
   const products     = (rawProducts || []).map(mapProduct);

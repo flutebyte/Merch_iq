@@ -7,23 +7,10 @@ import { useTheme } from '../hooks/useTheme';
 import { useBrand } from '../contexts/BrandContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useApiRequest, useFetch } from '../hooks/useApi';
+import { useLocalPref } from '../hooks/useLocalPref';
 import { api } from '../api/client';
 
 // ── Shared utilities ──────────────────────────────────────────────────────────
-
-function useLocalPref(key, defaultVal) {
-  const [val, setVal] = useState(() => {
-    try {
-      const s = localStorage.getItem(`inv_pref_${key}`);
-      return s !== null ? JSON.parse(s) : defaultVal;
-    } catch { return defaultVal; }
-  });
-  const save = (v) => {
-    setVal(v);
-    localStorage.setItem(`inv_pref_${key}`, JSON.stringify(v));
-  };
-  return [val, save];
-}
 
 function Toggle({ checked, onChange }) {
   return (
