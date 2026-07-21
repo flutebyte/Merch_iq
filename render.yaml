@@ -11,7 +11,7 @@ services:
     runtime: node
     plan: free
     region: singapore
-    rootDir: docs/inventory-api
+    rootDir: api
     # Free plan doesn't support preDeployCommand, so migrations run as part
     # of the build step instead. Upgrade to a paid instance and switch to
     # `preDeployCommand: npx prisma migrate deploy` for zero-downtime deploys.
@@ -78,7 +78,7 @@ services:
   - type: web
     name: merch-iq-app
     runtime: static
-    rootDir: docs/inventory-app
+    rootDir: web
     buildCommand: npm install && npm run build
     staticPublishPath: build
     envVars:

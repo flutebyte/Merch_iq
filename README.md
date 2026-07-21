@@ -7,8 +7,8 @@ Adaptive inventory & sales intelligence for Indian fashion/apparel SMBs — manu
 
 ## Stack
 
-- **Frontend:** React (Create React App) — `docs/inventory-app`
-- **API:** Node/Express + Prisma ORM — `docs/inventory-api`
+- **Frontend:** React (Create React App) — `web/`
+- **API:** Node/Express + Prisma ORM — `api/`
 - **Database:** PostgreSQL
 - **Auth:** JWT (localStorage)
 - **Deploy:** Render (see `render.yaml` — API, static frontend, and Postgres provisioned together as a Blueprint)
@@ -23,23 +23,33 @@ Adaptive inventory & sales intelligence for Indian fashion/apparel SMBs — manu
 
 ## Local development
 
-### API (`docs/inventory-api`)
+### API (`api/`)
 
 ```bash
-cd docs/inventory-api
+cd api
 cp .env.example .env   # fill in DATABASE_URL, JWT_SECRET, etc.
 npm install
 npx prisma migrate dev
 npm run dev             # http://localhost:3001
 ```
 
-### Frontend (`docs/inventory-app`)
+### Frontend (`web/`)
 
 ```bash
-cd docs/inventory-app
+cd web
 cp .env.example .env   # REACT_APP_API_URL=http://localhost:3001
 npm install
 npm start                # http://localhost:3000
+```
+
+## Testing
+
+The API has a Jest suite (state-machine and rate-limiter unit/integration tests):
+
+```bash
+cd api
+npm install
+npm test                 # jest --runInBand — 46 tests
 ```
 
 ## Deployment
