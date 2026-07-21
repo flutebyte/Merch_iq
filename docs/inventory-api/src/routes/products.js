@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { invalidateCache } = require('../services/actionQueueGenerator');
+const { isNonNegativeNumber } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -52,6 +53,10 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const { sku, name, category, color, size, costPrice, sellingPrice, tags, images, forceCreate } = req.body;
+
+    if (!isNonNegativeNumber(costPrice) || !isNonNegativeNumber(sellingPrice)) {
+      return res.status(400).json({ error: 'Cost price and selling price must be zero or greater.' });
+    }
 
     // ── Duplicate detection ───────────────────────────────────────────────────
     // Primary: SKU match (SKU must be unique per brand)
@@ -147,6 +152,10 @@ router.patch('/:id', async (req, res, next) => {
 
     if (recoveryAction !== undefined && recoveryAction !== null && !RECOVERY_ACTIONS.includes(recoveryAction)) {
       return res.status(400).json({ error: 'invalid_recovery_action', message: `recoveryAction must be one of: ${RECOVERY_ACTIONS.join(', ')}` });
+    }
+
+    if (!isNonNegativeNumber(costPrice) || !isNonNegativeNumber(sellingPrice)) {
+      return res.status(400).json({ error: 'Cost price and selling price must be zero or greater.' });
     }
 
     if (sku && sku.trim() && sku.trim().toLowerCase() !== (existing.sku || '').toLowerCase()) {

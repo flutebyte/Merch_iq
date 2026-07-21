@@ -338,7 +338,7 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
             <div style={{ display: 'flex', gap: 8 }}>
               <input autoFocus value={values.price} onChange={e => setValues(v => ({ ...v, price: e.target.value }))}
                 onKeyDown={e => { if (e.key === 'Enter') handleSave('price'); if (e.key === 'Escape') { setEditing(''); setSaveError(null); } }}
-                placeholder="0" type="number" style={S.input} />
+                placeholder="0" type="number" min="0" style={S.input} />
               <button className="btn btn-primary" style={S.saveBtn} disabled={saving} onClick={() => handleSave('price')}>
                 {saving ? <Loader size={12} style={S.spin} /> : 'Save'}
               </button>
@@ -473,7 +473,7 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <input autoFocus value={ev.color ?? color ?? ''} onChange={e => setLotEditValues(v => ({ ...v, [lot.id]: { ...v[lot.id], color: e.target.value } }))}
                       placeholder="Color" style={{ ...S.input, flex: 2, minWidth: 100 }} />
-                    <input type="number" value={ev.qty ?? String(lot.quantity ?? '')} onChange={e => setLotEditValues(v => ({ ...v, [lot.id]: { ...v[lot.id], qty: e.target.value } }))}
+                    <input type="number" min="0" value={ev.qty ?? String(lot.quantity ?? '')} onChange={e => setLotEditValues(v => ({ ...v, [lot.id]: { ...v[lot.id], qty: e.target.value } }))}
                       onKeyDown={e => { if (e.key === 'Enter') handleLotSave(lot.id); if (e.key === 'Escape') setEditingLotId(null); }}
                       placeholder="Qty" style={{ ...S.input, flex: 1, minWidth: 70 }} />
                     <button className="btn btn-primary" style={S.saveBtn} disabled={savingLot} onClick={() => handleLotSave(lot.id)}>
@@ -513,7 +513,7 @@ export default function ProductDetail({ product, onBack, onUpdate }) {
                   placeholder="Color (e.g. Red)" style={{ ...S.input, flex: 2, minWidth: 100 }} />
                 <input value={newLot.quantity} onChange={e => setNewLot(v => ({ ...v, quantity: e.target.value }))}
                   onKeyDown={e => { if (e.key === 'Enter') handleAddLot(); if (e.key === 'Escape') { setAddingLot(false); setSaveError(null); } }}
-                  placeholder="Qty" type="number" style={{ ...S.input, flex: 1, minWidth: 70 }} />
+                  placeholder="Qty" type="number" min="0" style={{ ...S.input, flex: 1, minWidth: 70 }} />
                 <button className="btn btn-primary" style={S.saveBtn} disabled={addingLotSaving} onClick={handleAddLot}>
                   {addingLotSaving ? <Loader size={12} style={S.spin} /> : 'Add'}
                 </button>
