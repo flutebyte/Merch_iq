@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { uploadImage } from '../utils/imageUpload';
 
-function Field({ label, optional, value, onChange, placeholder, type = 'text', mono = false }) {
+function Field({ label, optional, value, onChange, placeholder, type = 'text', mono = false, min }) {
   return (
     <div>
       <label style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, display: 'block', marginBottom: 6 }}>
@@ -16,6 +16,7 @@ function Field({ label, optional, value, onChange, placeholder, type = 'text', m
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         type={type}
+        min={min}
         style={{
           width: '100%', padding: '10px 14px',
           background: 'var(--surface2)', border: '1px solid var(--border)',
@@ -279,7 +280,7 @@ export default function PhotoCapture({ onComplete }) {
           <Field label="Product name" optional value={current.name} onChange={v => setCurrent(c => ({ ...c, name: v }))} placeholder="e.g. Blue Floral Dress" />
           <Field label="SKU" optional mono value={current.sku} onChange={v => setCurrent(c => ({ ...c, sku: v }))} placeholder="e.g. BFD-S-001" />
           <Field label="Color" optional value={current.color} onChange={v => setCurrent(c => ({ ...c, color: v }))} placeholder="e.g. Navy" />
-          <Field label="Quantity" optional type="number" value={current.quantity} onChange={v => setCurrent(c => ({ ...c, quantity: v }))} placeholder="Leave blank if unknown" />
+          <Field label="Quantity" optional type="number" min="0" value={current.quantity} onChange={v => setCurrent(c => ({ ...c, quantity: v }))} placeholder="Leave blank if unknown" />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
             <div>

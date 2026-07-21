@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { STATES, TRIGGERS, transition, inferTrigger } = require('../services/confidenceStateMachine');
 const { writeEvent } = require('../services/inventoryEventWriter');
 const { invalidateCache } = require('../services/actionQueueGenerator');
+const { isNonNegativeNumber } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -51,6 +52,9 @@ router.post('/', async (req, res, next) => {
 
     if (!productId) return res.status(400).json({ error: 'productId is required' });
     if (!source)    return res.status(400).json({ error: 'source is required' });
+    if (!isNonNegativeNumber(quantity)) {
+      return res.status(400).json({ error: 'Quantity must be zero or greater.' });
+    }
 
     const product = await prisma.product.findFirst({ where: { id: productId, brandId: req.brandId } });
     if (!product) return res.status(404).json({ error: 'product not found' });
@@ -117,6 +121,10 @@ router.patch('/:id', async (req, res, next) => {
       trigger: explicitTrigger,
       productName,
     } = req.body;
+
+    if (!isNonNegativeNumber(quantity)) {
+      return res.status(400).json({ error: 'Quantity must be zero or greater.' });
+    }
 
     const existing = await prisma.stockLot.findFirst({
       where: { id: req.params.id, brandId: req.brandId },
