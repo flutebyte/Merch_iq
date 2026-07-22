@@ -14,9 +14,11 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /action-queue/:taskId/snooze — snooze for 7 days
-router.post('/:taskId/snooze', (req, res) => {
-  snoozeTask(req.params.taskId, 7);
-  res.json({ ok: true, snoozedDays: 7 });
+router.post('/:taskId/snooze', async (req, res, next) => {
+  try {
+    await snoozeTask(req.params.taskId, req.brandId, 7);
+    res.json({ ok: true, snoozedDays: 7 });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
