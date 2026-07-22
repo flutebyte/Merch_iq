@@ -18,30 +18,39 @@ const prisma = require('../db');
 const cache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Snooze storage: { taskId: snoozedUntil }
-const snoozeStore = new Map();
-
-function isSnoozeActive(taskId) {
-  const until = snoozeStore.get(taskId);
-  if (!until) return false;
-  if (Date.now() > until) { snoozeStore.delete(taskId); return false; }
-  return true;
+// Snoozes are persisted (snoozed_tasks table), not kept in memory — an
+// in-memory store loses every snooze on process restart/redeploy, which
+// happens routinely on Render's free tier, silently un-snoozing tasks
+// the user believed were dismissed for a week.
+async function getSnoozedTaskIds(brandId) {
+  const rows = await prisma.snoozedTask.findMany({
+    where: { brandId, snoozedUntil: { gt: new Date() } },
+    select: { taskId: true },
+  });
+  return new Set(rows.map(r => r.taskId));
 }
 
-function snoozeTask(taskId, days = 7) {
-  snoozeStore.set(taskId, Date.now() + days * 24 * 60 * 60 * 1000);
+async function snoozeTask(taskId, brandId, days = 7) {
+  const snoozedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  await prisma.snoozedTask.upsert({
+    where: { taskId },
+    create: { taskId, brandId, snoozedUntil },
+    update: { snoozedUntil },
+  });
 }
 
 async function generateActionQueue(brandId) {
+  const snoozedIds = await getSnoozedTaskIds(brandId);
+
   // Check cache
   const cached = cache.get(brandId);
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.tasks.filter(t => !isSnoozeActive(t.id));
+    return cached.tasks.filter(t => !snoozedIds.has(t.id));
   }
 
   const tasks = await _computeTasks(brandId);
   cache.set(brandId, { tasks, expiresAt: Date.now() + CACHE_TTL_MS });
-  return tasks.filter(t => !isSnoozeActive(t.id));
+  return tasks.filter(t => !snoozedIds.has(t.id));
 }
 
 function invalidateCache(brandId) {

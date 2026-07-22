@@ -120,6 +120,7 @@ model Brand {
   integrations    Integration[]
   platformOrders  PlatformOrder[]
   platformMetrics PlatformMetric[]
+  snoozedTasks    SnoozedTask[]
 
   @@map("brands")
 }
@@ -188,6 +189,18 @@ model StockLot {
   @@index([brandId, confidenceState])
   @@index([brandId, productId])
   @@map("stock_lots")
+}
+
+model SnoozedTask {
+  taskId       String   @id @map("task_id")
+  brandId      String   @map("brand_id")
+  snoozedUntil DateTime @map("snoozed_until")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@index([brandId])
+  @@map("snoozed_tasks")
 }
 
 model InventoryEvent {
