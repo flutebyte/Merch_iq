@@ -83,6 +83,40 @@ function ConfidenceBadge({ score }) {
   );
 }
 
+// Dismissible alert strip shared by every Dashboard alert banner. Each banner is
+// gated by its own Settings > Notifications toggle, so turning a toggle off must
+// actually stop that banner from appearing here — see `notif_*` local prefs below.
+function AlertBanner({ icon: Icon, iconColor, borderColor, background, message, detail, ctaLabel, onCta, onDismiss, dismissLabel }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      padding: '12px 18px', marginBottom: 16,
+      background, border: `1px solid ${borderColor}`,
+      borderRadius: 'var(--radius-lg)',
+      animation: 'fadeIn 0.3s ease',
+    }}>
+      <Icon size={16} color={iconColor} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{message}</span>
+        {detail && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{detail}</span>}
+      </div>
+      <button
+        onClick={onCta}
+        style={{ fontSize: 12, fontWeight: 600, color: iconColor, background: 'transparent', border: 'none', cursor: 'pointer', flexShrink: 0 }}
+      >
+        {ctaLabel} →
+      </button>
+      <button
+        onClick={onDismiss}
+        aria-label={dismissLabel}
+        style={{ fontSize: 16, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
   const { user } = useAuth();
   const { brand } = useBrand();
@@ -92,10 +126,13 @@ export default function Dashboard({ onNavigate }) {
   const { data: revenueData } = useFetch('/analytics/revenue?days=7');
   const [lowStockAlertsEnabled] = useLocalPref('notif_lowstock', true);
   const [lowStockThresh] = useLocalPref('notif_threshold', 5);
+  const [inventoryAlertsEnabled] = useLocalPref('notif_inventory', true);
+  const [deadStockAlertsEnabled] = useLocalPref('notif_deadstock', true);
   const { data: lowStockData } = useFetch(
     lowStockAlertsEnabled ? `/sales-intelligence/low-stock?threshold=${lowStockThresh}` : null
   );
-  const [alertsDismissed, setAlertsDismissed] = useState(false);
+  const [dismissedAlerts, setDismissedAlerts] = useState({});
+  const dismissAlert = (key) => setDismissedAlerts(d => ({ ...d, [key]: true }));
 
   const products     = (rawProducts || []).map(mapProduct);
   const actionTasks  = actionData?.tasks || [];
@@ -200,40 +237,40 @@ export default function Dashboard({ onNavigate }) {
       )}
 
 
-      {/* Low-stock alert strip */}
-      {!alertsDismissed && lowStockData?.items?.length > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 14,
-          padding: '12px 18px', marginBottom: 16,
-          background: 'var(--warning-dim)',
-          border: '1px solid rgba(251,191,36,0.3)',
-          borderRadius: 'var(--radius-lg)',
-          animation: 'fadeIn 0.3s ease',
-        }}>
-          <AlertTriangle size={16} color="var(--warning)" style={{ flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-              {lowStockData.items.length} product{lowStockData.items.length !== 1 ? 's' : ''} running low
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
-              {lowStockData.items.slice(0, 2).map(i => i.productName || i.sku).join(', ')}
-              {lowStockData.items.length > 2 ? ` +${lowStockData.items.length - 2} more` : ''}
-            </span>
-          </div>
-          <button
-            onClick={() => onNavigate('inventory')}
-            style={{ fontSize: 12, fontWeight: 600, color: 'var(--warning)', background: 'transparent', border: 'none', cursor: 'pointer', flexShrink: 0 }}
-          >
-            View →
-          </button>
-          <button
-            onClick={() => setAlertsDismissed(true)}
-            aria-label="Dismiss low stock alert"
-            style={{ fontSize: 16, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
-          >
-            ×
-          </button>
-        </div>
+      {/* Low-stock alert strip — Settings > Notifications > "Low stock alerts" */}
+      {!dismissedAlerts.lowstock && lowStockData?.items?.length > 0 && (
+        <AlertBanner
+          icon={AlertTriangle} iconColor="var(--warning)"
+          borderColor="rgba(251,191,36,0.3)" background="var(--warning-dim)"
+          message={`${lowStockData.items.length} product${lowStockData.items.length !== 1 ? 's' : ''} running low`}
+          detail={`${lowStockData.items.slice(0, 2).map(i => i.productName || i.sku).join(', ')}${lowStockData.items.length > 2 ? ` +${lowStockData.items.length - 2} more` : ''}`}
+          ctaLabel="View" onCta={() => onNavigate('inventory')}
+          onDismiss={() => dismissAlert('lowstock')} dismissLabel="Dismiss low stock alert"
+        />
+      )}
+
+      {/* Inventory-quality alert strip — Settings > Notifications > "Inventory alerts" */}
+      {inventoryAlertsEnabled && !dismissedAlerts.atrisk && !productsLoading && atRisk > 0 && (
+        <AlertBanner
+          icon={Package} iconColor="var(--danger)"
+          borderColor="rgba(248,113,113,0.3)" background="var(--danger-dim)"
+          message={`${atRisk} product${atRisk !== 1 ? 's' : ''} need${atRisk === 1 ? 's' : ''} attention`}
+          detail="missing details or unverified stock"
+          ctaLabel="View" onCta={() => onNavigate('inventory')}
+          onDismiss={() => dismissAlert('atrisk')} dismissLabel="Dismiss inventory alert"
+        />
+      )}
+
+      {/* Dead-stock alert strip — Settings > Notifications > "Dead stock alerts" */}
+      {deadStockAlertsEnabled && !dismissedAlerts.deadstock && !productsLoading && deadStockCount > 0 && (
+        <AlertBanner
+          icon={TrendingDown} iconColor="var(--warning)"
+          borderColor="rgba(251,191,36,0.3)" background="var(--warning-dim)"
+          message={`${deadStockCount} product${deadStockCount !== 1 ? 's' : ''} sitting as dead stock`}
+          detail={deadStockValue > 0 ? `${fmt(deadStockValue)} recoverable` : 'no sales in 90+ days'}
+          ctaLabel="Recover" onCta={() => onNavigate('actions')}
+          onDismiss={() => dismissAlert('deadstock')} dismissLabel="Dismiss dead stock alert"
+        />
       )}
 
       {/* Metric cards */}
